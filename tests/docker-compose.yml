@@ -1,0 +1,138 @@
+# Local-only test + observability stack — a Wazuh CLUSTER, no TLS cert tree.
+#
+#   wazuh.indexer               (single indexer, OpenSearch security DISABLED → no certs)
+#   wazuh.master + wazuh.worker (cluster, joined via the shared cluster key)
+#   wazuh.agent                 (a real agent, to populate agent metrics)
+#   exporter                    (sidecar of the master)
+#   prometheus + grafana        (scrape + dashboards)
+#
+# Deliberately minimal: a single indexer with the security plugin disabled (plain
+# HTTP, no certificates) and managers with no filebeat TLS. The manager API serves
+# its own self-signed cert (the exporter sets WAZUH_API_TLS_SKIP_VERIFY). The
+# cluster forms over the shared <key> in the mounted ossec.conf — no certs anywhere.
+# LOCAL-ONLY (NOT in CI). Up: exporter :9555, Prometheus :9090, Grafana :3000 (admin/admin).
+services:
+  wazuh.indexer:
+    image: wazuh/wazuh-indexer:4.14.5
+    hostname: wazuh.indexer
+    restart: always
+    ports:
+      - "9200:9200"
+    environment:
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - "DISABLE_INSTALL_DEMO_CONFIG=true"
+      - "DISABLE_SECURITY_PLUGIN=true"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - wazuh-indexer-data:/var/lib/wazuh-indexer
+      - ./config/indexer.yml:/usr/share/wazuh-indexer/config/opensearch.yml
+
+  wazuh.master:
+    image: wazuh/wazuh-manager:4.14.5
+    hostname: wazuh.master
+    restart: always
+    depends_on:
+      - wazuh.indexer
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 655360, hard: 655360 }
+    ports:
+      - "1514:1514"
+      - "1515:1515"
+      - "55000:55000"
+    environment:
+      - INDEXER_URL=http://wazuh.indexer:9200
+      - FILEBEAT_SSL_VERIFICATION_MODE=none
+      - API_USERNAME=wazuh-wui
+      - API_PASSWORD=MyS3cr37P450r.*-
+    volumes:
+      - master_etc:/var/ossec/etc
+      - master_queue:/var/ossec/queue
+      - master_logs:/var/ossec/logs
+      - ./config/cluster/master.conf:/wazuh-config-mount/etc/ossec.conf
+
+  wazuh.worker:
+    image: wazuh/wazuh-manager:4.14.5
+    hostname: wazuh.worker
+    restart: always
+    depends_on:
+      - wazuh.master
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 655360, hard: 655360 }
+    environment:
+      - INDEXER_URL=http://wazuh.indexer:9200
+      - FILEBEAT_SSL_VERIFICATION_MODE=none
+    volumes:
+      - worker_etc:/var/ossec/etc
+      - worker_queue:/var/ossec/queue
+      - worker_logs:/var/ossec/logs
+      - ./config/cluster/worker.conf:/wazuh-config-mount/etc/ossec.conf
+
+  # A real agent enrolling against the master, to populate the agent metrics.
+  wazuh.agent:
+    image: wazuh/wazuh-agent:4.14.5
+    hostname: wazuh-agent-sim
+    restart: always
+    depends_on:
+      - wazuh.master
+    environment:
+      # NOTE: the 4.14.x agent image's init reads WAZUH_MANAGER_SERVER (it
+      # substitutes the CHANGE_MANAGER_IP placeholder in ossec.conf), not the
+      # WAZUH_MANAGER name used by other/newer image versions.
+      - WAZUH_MANAGER_SERVER=wazuh.master
+      - WAZUH_AGENT_NAME=agent-sim-01
+      - WAZUH_AGENT_GROUP=default
+
+  # The exporter under test. API-only: it just needs to reach the master API —
+  # no shared volume, no .state files. Could even run off-host.
+  exporter:
+    build:
+      context: ..
+    depends_on:
+      - wazuh.master
+    environment:
+      WAZUH_LISTEN_ADDRESS: "0.0.0.0:9555"
+      WAZUH_NODE_NAME: "manager"
+      WAZUH_API_URL: "https://wazuh.master:55000"
+      WAZUH_API_USERNAME: "wazuh-wui"
+      WAZUH_API_PASSWORD: "MyS3cr37P450r.*-"
+      WAZUH_API_TLS_SKIP_VERIFY: "true"
+    ports:
+      - "9555:9555"
+
+  prometheus:
+    image: prom/prometheus:latest
+    depends_on:
+      - exporter
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+
+volumes:
+  wazuh-indexer-data:
+  master_etc:
+  master_queue:
+  master_logs:
+  worker_etc:
+  worker_queue:
+  worker_logs:
+  prometheus-data:
+  grafana-data:

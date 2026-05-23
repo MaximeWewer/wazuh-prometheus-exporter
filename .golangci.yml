@@ -1,0 +1,25 @@
+# golangci-lint v2 configuration.
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - unconvert
+    - bodyclose
+    - gosec
+    # misspell intentionally omitted: the codebase uses British spelling
+    # ("labelled", "cancelled") as a consistent house style.
+    # gosec runs here (honoring //nolint:gosec) rather than as a standalone step.
+
+  exclusions:
+    generated: lax
+    rules:
+      # Test files may ignore returned errors and use unhardened test servers.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec

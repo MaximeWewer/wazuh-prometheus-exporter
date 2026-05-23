@@ -1,0 +1,12 @@
+# Build artifacts
+/dist/
+/wazuh-exporter
+
+# Test and coverage output
+*.out
+*.test
+coverage.txt
+
+# Local secrets / env
+.env
+*.local

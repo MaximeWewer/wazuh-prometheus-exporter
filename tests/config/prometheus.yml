@@ -1,0 +1,16 @@
+# Local stack Prometheus config: scrape the exporter's two endpoints.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # Wazuh domain metrics (wazuh_*).
+  - job_name: wazuh
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['exporter:9555']
+
+  # Exporter self-metrics (wazuh_exporter_*, go_*, process_*).
+  - job_name: wazuh-exporter-internal
+    metrics_path: /internal/metrics
+    static_configs:
+      - targets: ['exporter:9555']

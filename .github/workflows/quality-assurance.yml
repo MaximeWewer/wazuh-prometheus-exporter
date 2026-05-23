@@ -1,0 +1,43 @@
+name: quality-assurance
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Merge-gating: static checks, security scans (gosec runs inside golangci-lint),
+  # and the race-enabled test suite with a coverage gate. Any failed step fails
+  # the job (and blocks merge).
+  #
+  # The Docker-based integration tests under tests/ are intentionally NOT run
+  # here: a real Wazuh stack (manager + indexer) is too heavy on CI runner time
+  # and disk. They are local-only — see tests/README.md.
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: make fmt
+
+      - name: go vet
+        run: make vet
+
+      - name: golangci-lint (includes gosec)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+
+      - name: govulncheck
+        run: make govulncheck
+
+      - name: tests + coverage gate
+        run: make cover

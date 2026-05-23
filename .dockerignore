@@ -1,0 +1,10 @@
+.git
+.github
+dist
+tests
+*.md
+LICENSE
+Dockerfile
+.dockerignore
+Makefile
+**/*_test.go
