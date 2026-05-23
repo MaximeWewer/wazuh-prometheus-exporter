@@ -1,14 +1,6 @@
 # wazuh-prometheus-exporter
 
-A **Prometheus exporter for [Wazuh](https://wazuh.com/)**.
-
-## Features
-
-- **Per-node manager health** via the API — `analysisd` (events, dropped, decode breakdown by module, queue saturation), `remoted` (sessions, bytes, messages), `wazuh-db` query throughput, daemon up/down, config validity, log-level rates, daily totals and hourly/weekly alert-volume profiles. Collected from `/manager/*` on a standalone manager, or from `/cluster/<node>/*` for **every** node (master included) in a cluster — so everything is reported **per cluster node**.
-- **API-based fleet visibility**: agent connection summary + group/version/OS/outdated/last-registered, multi-node cluster discovery, per-node ruleset sync, and cluster-wide config validation.
-- **Hardened API client**: JWT auth with token caching + proactive refresh, validated TLS (custom CA / mTLS / opt-in skip-verify), a short-TTL response cache, and a circuit breaker — so frequent scrapes never overload the Wazuh API.
-- **Self-observability**: `wazuh_up`, scrape duration, per-collector success/error counters, cache hit/miss, circuit-breaker state, plus Go runtime + process metrics on a separate endpoint.
-- Operationally tidy: env-based config with `_FILE` secrets, structured logging, distroless static non-root image, graceful shutdown, optional TLS/basic-auth on the metrics server.
+**Prometheus exporter for [Wazuh](https://wazuh.com/)**.
 
 ## Quick start
 
