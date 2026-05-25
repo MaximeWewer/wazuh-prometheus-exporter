@@ -123,7 +123,7 @@ jobs:
           org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }} (${{ env.PLATFORM_ARCH }})
           org.opencontainers.image.version=${{ needs.prepare-build.outputs.version }}
           org.opencontainers.image.vendor=Maxime Wewer
-          org.opencontainers.image.licenses=MIT
+          org.opencontainers.image.licenses=Apache-2.0
           org.opencontainers.image.source=https://github.com/${{ github.repository }}
           org.opencontainers.image.url=https://github.com/${{ github.repository }}
           org.opencontainers.image.documentation=https://github.com/${{ github.repository }}/blob/main/README.md
@@ -191,7 +191,7 @@ jobs:
           $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
           --annotation='index:org.opencontainers.image.description=${{ env.IMAGE_DESCRIPTION }}' \
           --annotation='index:org.opencontainers.image.source=https://github.com/${{ github.repository }}' \
-          --annotation='index:org.opencontainers.image.licenses=MIT' \
+          --annotation='index:org.opencontainers.image.licenses=Apache-2.0' \
           ${{ env.REGISTRY }}/${{ needs.prepare-build.outputs.name_lower }}:${{ needs.prepare-build.outputs.version }}-amd64 \
           ${{ env.REGISTRY }}/${{ needs.prepare-build.outputs.name_lower }}:${{ needs.prepare-build.outputs.version }}-arm64
 
@@ -310,3 +310,66 @@ jobs:
           **Full Changelog**: ${{ steps.changelog.outputs.COMPARISON_URL }}
         draft: false
         prerelease: false
+
+  release-helm-chart:
+    needs:
+    - prepare-build
+    - publish-github-release
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write # attach the chart to the release
+      packages: write # push the chart to GHCR (OCI)
+
+    env:
+      CHART_PATH: charts/wazuh-prometheus-exporter
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+
+    - name: Convert repository owner to lowercase
+      id: owner
+      run: echo "lower=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+    - name: Install Helm
+      uses: azure/setup-helm@v4
+      with:
+        version: 'latest'
+
+    - name: Stamp the release version into the chart
+      env:
+        VERSION: ${{ needs.prepare-build.outputs.version }}
+      run: |
+        # Chart version + appVersion follow the image release tag (CalVer is valid
+        # SemVer); also pin image.tag in values.yaml so the published chart deploys
+        # exactly the image just built — no separate version to maintain.
+        sed -i "s/^version:.*/version: ${VERSION}/" "${CHART_PATH}/Chart.yaml"
+        sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" "${CHART_PATH}/Chart.yaml"
+        sed -i "s/^  tag: .*/  tag: \"${VERSION}\"/" "${CHART_PATH}/values.yaml"
+        head -8 "${CHART_PATH}/Chart.yaml"
+        grep -A2 '^image:' "${CHART_PATH}/values.yaml"
+
+    - name: Lint chart
+      run: helm lint "${CHART_PATH}"
+
+    - name: Package chart
+      run: helm package "${CHART_PATH}"
+
+    - name: Log in to GHCR
+      run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login "${{ env.REGISTRY }}" --username "${{ github.actor }}" --password-stdin
+
+    - name: Push chart to OCI registry
+      env:
+        VERSION: ${{ needs.prepare-build.outputs.version }}
+      run: |
+        helm push "wazuh-prometheus-exporter-${VERSION}.tgz" "oci://${{ env.REGISTRY }}/${{ steps.owner.outputs.lower }}/charts"
+        echo "Pushed oci://${{ env.REGISTRY }}/${{ steps.owner.outputs.lower }}/charts/wazuh-prometheus-exporter:${VERSION}"
+
+    - name: Attach chart to the GitHub release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ needs.prepare-build.outputs.version }}
+        files: wazuh-prometheus-exporter-${{ needs.prepare-build.outputs.version }}.tgz
+        token: ${{ secrets.GITHUB_TOKEN }}

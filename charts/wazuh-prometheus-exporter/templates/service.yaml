@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "wazuh-exporter.fullname" . }}
+  labels:
+    {{- include "wazuh-exporter.labels" . | nindent 4 }}
+  {{- if or .Values.service.annotations .Values.prometheusScrapeAnnotations }}
+  annotations:
+    {{- if .Values.prometheusScrapeAnnotations }}
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ .Values.service.port | quote }}
+    prometheus.io/path: "/metrics"
+    {{- end }}
+    {{- with .Values.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "wazuh-exporter.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.service.port }}
+      targetPort: metrics
+      protocol: TCP

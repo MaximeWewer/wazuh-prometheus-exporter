@@ -1,0 +1,46 @@
+apiVersion: v2
+name: wazuh-prometheus-exporter
+description: A Helm chart for the Wazuh Prometheus exporter (API-only, Deployment + Service).
+type: application
+
+# version and appVersion are a placeholder for local use: the build-and-release
+# workflow stamps both with the released image tag (CalVer) at publish time, so the
+# chart and the image it deploys always share one version.
+version: 0.1.0
+appVersion: "0.1.0"
+
+keywords:
+  - wazuh
+  - prometheus
+  - exporter
+  - monitoring
+  - metrics
+
+home: https://github.com/MaximeWewer/wazuh-prometheus-exporter
+
+icon: https://wazuh.com/brand-assets/Wazuh-Logo.svg
+
+sources:
+  - https://github.com/MaximeWewer/wazuh-prometheus-exporter
+
+maintainers:
+  - name: Maxime Wewer
+    url: https://github.com/MaximeWewer/
+
+annotations:
+  artifacthub.io/license: Apache-2.0
+  kubernetes.io/minimum-version: "1.20.0"
+
+  category: "Security"
+
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/MaximeWewer/wazuh-prometheus-exporter
+
+  artifacthub.io/screenshots: |
+    - title: Wazuh — Fleet dashboard
+      url: https://raw.githubusercontent.com/MaximeWewer/wazuh-prometheus-exporter/main/assets/wazuh-fleet.png
+    - title: Wazuh — Node dashboard
+      url: https://raw.githubusercontent.com/MaximeWewer/wazuh-prometheus-exporter/main/assets/wazuh-node.png
+    - title: Wazuh Exporter — Internal dashboard
+      url: https://raw.githubusercontent.com/MaximeWewer/wazuh-prometheus-exporter/main/assets/wazuh-exporter-internal.png

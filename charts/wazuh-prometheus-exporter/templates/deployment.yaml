@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "wazuh-exporter.fullname" . }}
+  labels:
+    {{- include "wazuh-exporter.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "wazuh-exporter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "wazuh-exporter.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "wazuh-exporter.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: exporter
+          image: {{ include "wazuh-exporter.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: metrics
+              containerPort: 9555
+              protocol: TCP
+          env:
+            - name: WAZUH_LISTEN_ADDRESS
+              value: "0.0.0.0:9555"
+            - name: WAZUH_API_URL
+              value: {{ .Values.wazuh.apiUrl | quote }}
+            - name: WAZUH_API_USERNAME
+              value: {{ .Values.wazuh.apiUsername | quote }}
+            {{- if include "wazuh-exporter.hasPassword" . }}
+            - name: WAZUH_API_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "wazuh-exporter.passwordSecretName" . }}
+                  key: {{ include "wazuh-exporter.passwordSecretKey" . }}
+            {{- end }}
+            - name: WAZUH_API_TLS_SKIP_VERIFY
+              value: {{ .Values.wazuh.tlsSkipVerify | quote }}
+            {{- if .Values.wazuh.caSecret }}
+            - name: WAZUH_API_CA_FILE
+              value: "/etc/wazuh-exporter/ca/{{ .Values.wazuh.caSecretKey }}"
+            {{- end }}
+            - name: WAZUH_CACHE_TTL
+              value: {{ .Values.wazuh.cacheTtl | quote }}
+            - name: WAZUH_SCRAPE_TIMEOUT
+              value: {{ .Values.wazuh.scrapeTimeout | quote }}
+            - name: WAZUH_STARTUP_GRACE
+              value: {{ .Values.wazuh.startupGrace | quote }}
+            - name: WAZUH_LOG_LEVEL
+              value: {{ .Values.wazuh.logLevel | quote }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if .Values.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: metrics
+            periodSeconds: {{ .Values.startupProbe.periodSeconds }}
+            failureThreshold: {{ .Values.startupProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+          {{- end }}
+          {{- if .Values.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if or .Values.wazuh.caSecret .Values.extraVolumeMounts }}
+          volumeMounts:
+            {{- if .Values.wazuh.caSecret }}
+            - name: wazuh-api-ca
+              mountPath: /etc/wazuh-exporter/ca
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+      {{- if or .Values.wazuh.caSecret .Values.extraVolumes }}
+      volumes:
+        {{- if .Values.wazuh.caSecret }}
+        - name: wazuh-api-ca
+          secret:
+            secretName: {{ .Values.wazuh.caSecret }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

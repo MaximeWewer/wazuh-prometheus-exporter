@@ -1,0 +1,104 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/maximewewer/wazuh-prometheus-exporter
+  # tag defaults to .Chart.AppVersion when empty
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Wazuh API connection + exporter configuration (maps to WAZUH_* env vars).
+wazuh:
+  apiUrl: "https://wazuh-manager.wazuh.svc:55000"
+  apiUsername: "wazuh-wui"
+
+  # Password — choose ONE:
+  #  - existingSecret: reference a Secret you manage (recommended in prod).
+  #  - password: inline value; the chart creates a Secret for it.
+  existingSecret: ""        # name of an existing Secret holding the API password
+  existingSecretKey: "password"
+  password: ""              # inline (chart creates a Secret); leave empty in prod
+
+  # TLS: prefer caFile (verify a self-signed cert) over tlsSkipVerify.
+  tlsSkipVerify: false
+  # CA bundle that signed the Wazuh API cert. Provide it via an existing Secret;
+  # it is mounted and WAZUH_API_CA_FILE is set automatically.
+  caSecret: ""              # Secret name holding the CA bundle
+  caSecretKey: "ca.crt"
+
+  cacheTtl: "30s"
+  scrapeTimeout: "10s"
+  startupGrace: "60s"       # quiet logs while a slow Wazuh API boots
+  logLevel: "info"
+
+service:
+  type: ClusterIP
+  port: 9555
+  annotations: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Prometheus Operator ServiceMonitor (requires the CRD).
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+  relabelings: []
+  metricRelabelings: []
+
+# Plain prometheus.io/scrape annotations on the Service (alternative to ServiceMonitor).
+prometheusScrapeAnnotations: false
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# Probes. startupProbe absorbs a slow-to-boot Wazuh API (failureThreshold*period).
+startupProbe:
+  enabled: true
+  periodSeconds: 5
+  failureThreshold: 30
+livenessProbe:
+  enabled: true
+  periodSeconds: 15
+readinessProbe:
+  enabled: true
+  periodSeconds: 10
+  failureThreshold: 3
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Escape hatches.
+extraEnv: []           # list of {name, value} or {name, valueFrom}
+extraVolumes: []
+extraVolumeMounts: []

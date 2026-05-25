@@ -1,0 +1,22 @@
+{{ include "wazuh-exporter.fullname" . }} deployed.
+
+Metrics:        http://{{ include "wazuh-exporter.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/metrics
+Self-metrics:   .../internal/metrics
+Liveness:       .../health      Readiness: .../ready
+
+{{- if not (include "wazuh-exporter.hasPassword" .) }}
+
+WARNING: no Wazuh API password configured (wazuh.password / wazuh.existingSecret).
+The exporter will serve only its own self-metrics (wazuh_up=0). Set credentials:
+  --set wazuh.existingSecret=<secret>     # Secret with key "password"  (recommended)
+  --set wazuh.password=<password>         # inline (chart creates a Secret)
+{{- end }}
+{{- if .Values.wazuh.tlsSkipVerify }}
+
+NOTE: WAZUH_API_TLS_SKIP_VERIFY is enabled (insecure). For a self-signed API cert,
+prefer verifying it: set wazuh.caSecret to a Secret holding the CA bundle.
+{{- end }}
+
+Check readiness:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "wazuh-exporter.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  curl -s localhost:{{ .Values.service.port }}/ready
