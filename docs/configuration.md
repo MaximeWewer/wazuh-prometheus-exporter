@@ -22,6 +22,7 @@ warning and continues.
 | Variable | Default | Range / notes | Description |
 |----------|---------|---------------|-------------|
 | `WAZUH_SCRAPE_TIMEOUT` | `10s` | `1s`–`5m` | Per-scrape timeout (also the API HTTP client timeout). |
+| `WAZUH_STARTUP_GRACE` | `0` (off) | `0`–`10m` | Quiet-startup window for a slow-to-boot Wazuh: until the first successful collection (or this window elapses), collection failures log at `warn` ("waiting for Wazuh API") instead of `error`. Metrics (`wazuh_up=0`, `collector_errors_total`) and readiness are unaffected. |
 | `WAZUH_CACHE_TTL` | `30s` | `5s`–`5m` | TTL of the API response cache between scrapes. The exporter makes several API calls per scrape (a few cluster-level calls plus ~7 per node), so keep this **≥ your Prometheus scrape interval** to serve repeat scrapes from cache and avoid hammering the Wazuh API. |
 
 ## Wazuh API

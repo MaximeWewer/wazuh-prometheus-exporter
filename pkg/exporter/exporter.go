@@ -40,6 +40,8 @@ type Exporter struct {
 	collectors     []Collector
 	scrapeTimeout  time.Duration
 	maxConcurrency int
+	startedAt      time.Time
+	startupGrace   time.Duration // quiet-startup window; 0 disables
 
 	collectMu sync.Mutex  // serializes whole scrapes
 	ready     atomic.Bool // sticky: set once a collection first succeeds
@@ -53,6 +55,7 @@ func New(log zerolog.Logger, mon *monitoring.Metrics, scrapeTimeout time.Duratio
 		collectors:     collectors,
 		scrapeTimeout:  scrapeTimeout,
 		maxConcurrency: defaultMaxConcurrency,
+		startedAt:      time.Now(),
 	}
 	if len(collectors) == 0 {
 		// Self-metrics-only mode (no API credentials): nothing to reach, so the
@@ -60,6 +63,20 @@ func New(log zerolog.Logger, mon *monitoring.Metrics, scrapeTimeout time.Duratio
 		e.ready.Store(true)
 	}
 	return e
+}
+
+// SetStartupGrace sets a quiet-startup window: until the first successful
+// collection (or until the window elapses), collection failures are logged at
+// warn ("waiting for Wazuh API") instead of error, so a slow-to-boot Wazuh
+// doesn't look like an outage. Metrics (collector_errors_total, wazuh_up=0) are
+// unaffected. 0 disables it (failures log at error from the start).
+func (e *Exporter) SetStartupGrace(d time.Duration) { e.startupGrace = d }
+
+// inStartupGrace reports whether collection failures should be logged calmly:
+// the grace window is configured, no collection has succeeded yet, and the window
+// has not elapsed.
+func (e *Exporter) inStartupGrace() bool {
+	return e.startupGrace > 0 && !e.ready.Load() && time.Since(e.startedAt) < e.startupGrace
 }
 
 // Ready reports readiness: true once a collection has succeeded at least once
@@ -123,8 +140,11 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			}()
 
 			if err := c.Collect(ctx, ch); err != nil {
-				e.log.Error().Str("component", "exporter").Str("collector", c.Name()).
-					Err(err).Msg("collector failed")
+				ev, msg := e.log.Error(), "collector failed"
+				if e.inStartupGrace() {
+					ev, msg = e.log.Warn(), "collector failed during startup grace (waiting for Wazuh API)"
+				}
+				ev.Str("component", "exporter").Str("collector", c.Name()).Err(err).Msg(msg)
 				e.mon.CollectorErrors.WithLabelValues(c.Name(), "collect").Inc()
 				return
 			}

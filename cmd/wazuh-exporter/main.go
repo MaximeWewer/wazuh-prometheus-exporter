@@ -106,6 +106,7 @@ func newServer(ctx context.Context, cfg *config.Config, log zerolog.Logger) *htt
 	}
 
 	exp := exporter.New(log, self, cfg.ScrapeTimeout, collectors...)
+	exp.SetStartupGrace(cfg.StartupGrace)
 
 	mainReg := prometheus.NewRegistry()
 	mainReg.MustRegister(exp)

@@ -33,6 +33,7 @@ type Config struct {
 
 	CacheTTL      time.Duration
 	ScrapeTimeout time.Duration
+	StartupGrace  time.Duration
 
 	ServerReadTimeout     time.Duration
 	ServerWriteTimeout    time.Duration
@@ -53,6 +54,8 @@ const (
 	defaultScrapeTimeout = 10 * time.Second
 	minScrapeTimeout     = 1 * time.Second
 	maxScrapeTimeout     = 5 * time.Minute
+
+	maxStartupGrace = 10 * time.Minute // 0 disables the quiet-startup window
 
 	defaultServerReadTimeout     = 10 * time.Second
 	defaultServerWriteTimeout    = 30 * time.Second
@@ -89,6 +92,7 @@ func Load() (*Config, error) {
 		ServerShutdownTimeout: clampDuration(log, "WAZUH_SERVER_SHUTDOWN_TIMEOUT", getEnvDurationOrDefault(log, "WAZUH_SERVER_SHUTDOWN_TIMEOUT", defaultServerShutdownTimeout), minServerTimeout, maxShutdownTimeout),
 		CacheTTL:              clampDuration(log, "WAZUH_CACHE_TTL", getEnvDurationOrDefault(log, "WAZUH_CACHE_TTL", defaultCacheTTL), minCacheTTL, maxCacheTTL),
 		ScrapeTimeout:         clampDuration(log, "WAZUH_SCRAPE_TIMEOUT", getEnvDurationOrDefault(log, "WAZUH_SCRAPE_TIMEOUT", defaultScrapeTimeout), minScrapeTimeout, maxScrapeTimeout),
+		StartupGrace:          clampDuration(log, "WAZUH_STARTUP_GRACE", getEnvDurationOrDefault(log, "WAZUH_STARTUP_GRACE", 0), 0, maxStartupGrace),
 	}
 
 	var errs []error

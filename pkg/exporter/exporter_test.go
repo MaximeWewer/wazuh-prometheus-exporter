@@ -1,17 +1,43 @@
 package exporter
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/rs/zerolog"
 
 	"github.com/MaximeWewer/wazuh-prometheus-exporter/pkg/logger"
 	"github.com/MaximeWewer/wazuh-prometheus-exporter/pkg/monitoring"
 )
+
+func TestExporter_StartupGraceLogLevel(t *testing.T) {
+	mon := monitoring.New("test", time.Now())
+	var buf bytes.Buffer
+	lg := zerolog.New(&buf)
+
+	// Within the grace window, a failing collector logs at warn ("waiting"), not error.
+	e := New(lg, mon, time.Second, fakeCollector{name: "x", err: errors.New("down")})
+	e.SetStartupGrace(time.Minute)
+	e.CollectOnce()
+	if out := buf.String(); !strings.Contains(out, `"level":"warn"`) ||
+		!strings.Contains(out, "waiting for Wazuh API") || strings.Contains(out, `"level":"error"`) {
+		t.Errorf("in-grace failure should log warn, not error; got: %s", out)
+	}
+
+	// With no grace configured, a failing collector logs at error.
+	buf.Reset()
+	e2 := New(lg, mon, time.Second, fakeCollector{name: "y", err: errors.New("down")})
+	e2.CollectOnce()
+	if out := buf.String(); !strings.Contains(out, `"level":"error"`) {
+		t.Errorf("without grace, failure should log error; got: %s", out)
+	}
+}
 
 type fakeCollector struct {
 	name   string
