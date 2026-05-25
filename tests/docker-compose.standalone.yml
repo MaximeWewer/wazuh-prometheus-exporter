@@ -1,0 +1,100 @@
+# Local-only test + observability stack — a STANDALONE Wazuh manager (no cluster).
+#
+#   wazuh.indexer   (single indexer, OpenSearch security DISABLED → no certs)
+#   wazuh.manager   (single manager, cluster DISABLED — the image default, no
+#                    cluster ossec.conf mounted → /cluster/status reports enabled:no)
+#   wazuh.agent     (a real agent, to populate agent metrics)
+#   exporter        (sidecar of the manager)
+#   prometheus + grafana (scrape + dashboards)
+#
+# This validates the standalone collection path: every per-node metric comes from
+# /manager/* (vs the cluster stack's /cluster/<node>/*). In standalone the node
+# label falls back to "manager" (the /cluster/local/info name source needs the
+# cluster running). Throwaway: no named volumes (state is ephemeral, lost on `down`).
+# Same ports as the cluster stack — run ONE at a time:
+#   docker compose -f tests/docker-compose.standalone.yml up -d --build
+#   exporter :9555, Prometheus :9090, Grafana :3000 (admin/admin), API :55000
+services:
+  wazuh.indexer:
+    image: wazuh/wazuh-indexer:4.14.5
+    hostname: wazuh.indexer
+    restart: always
+    ports:
+      - "9200:9200"
+    environment:
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - "DISABLE_INSTALL_DEMO_CONFIG=true"
+      - "DISABLE_SECURITY_PLUGIN=true"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - ./config/indexer.yml:/usr/share/wazuh-indexer/config/opensearch.yml
+
+  # Single manager, cluster disabled (no cluster ossec.conf mounted → image default).
+  wazuh.manager:
+    image: wazuh/wazuh-manager:4.14.5
+    hostname: wazuh.manager
+    restart: always
+    depends_on:
+      - wazuh.indexer
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 655360, hard: 655360 }
+    ports:
+      - "1514:1514"
+      - "1515:1515"
+      - "55000:55000"
+    environment:
+      - INDEXER_URL=http://wazuh.indexer:9200
+      - FILEBEAT_SSL_VERIFICATION_MODE=none
+      - API_USERNAME=wazuh-wui
+      - API_PASSWORD=MyS3cr37P450r.*-
+
+  # A real agent enrolling against the manager, to populate the agent metrics.
+  wazuh.agent:
+    image: wazuh/wazuh-agent:4.14.5
+    hostname: wazuh-agent-sim
+    restart: always
+    depends_on:
+      - wazuh.manager
+    environment:
+      - WAZUH_MANAGER_SERVER=wazuh.manager
+      - WAZUH_AGENT_NAME=agent-sim-01
+      - WAZUH_AGENT_GROUP=default
+
+  # The exporter under test. API-only: it just needs to reach the manager API.
+  exporter:
+    build:
+      context: ..
+    depends_on:
+      - wazuh.manager
+    environment:
+      WAZUH_LISTEN_ADDRESS: "0.0.0.0:9555"
+      WAZUH_API_URL: "https://wazuh.manager:55000"
+      WAZUH_API_USERNAME: "wazuh-wui"
+      WAZUH_API_PASSWORD: "MyS3cr37P450r.*-"
+      WAZUH_API_TLS_SKIP_VERIFY: "true"
+    ports:
+      - "9555:9555"
+
+  prometheus:
+    image: prom/prometheus:latest
+    depends_on:
+      - exporter
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"

@@ -10,6 +10,7 @@
 # HTTP, no certificates) and managers with no filebeat TLS. The manager API serves
 # its own self-signed cert (the exporter sets WAZUH_API_TLS_SKIP_VERIFY). The
 # cluster forms over the shared <key> in the mounted ossec.conf — no certs anywhere.
+# Throwaway: no named volumes (state is ephemeral, lost on `down`).
 # LOCAL-ONLY (NOT in CI). Up: exporter :9555, Prometheus :9090, Grafana :3000 (admin/admin).
 services:
   wazuh.indexer:
@@ -26,7 +27,6 @@ services:
       memlock: { soft: -1, hard: -1 }
       nofile: { soft: 65536, hard: 65536 }
     volumes:
-      - wazuh-indexer-data:/var/lib/wazuh-indexer
       - ./config/indexer.yml:/usr/share/wazuh-indexer/config/opensearch.yml
 
   wazuh.master:
@@ -48,9 +48,6 @@ services:
       - API_USERNAME=wazuh-wui
       - API_PASSWORD=MyS3cr37P450r.*-
     volumes:
-      - master_etc:/var/ossec/etc
-      - master_queue:/var/ossec/queue
-      - master_logs:/var/ossec/logs
       - ./config/cluster/master.conf:/wazuh-config-mount/etc/ossec.conf
 
   wazuh.worker:
@@ -66,9 +63,6 @@ services:
       - INDEXER_URL=http://wazuh.indexer:9200
       - FILEBEAT_SSL_VERIFICATION_MODE=none
     volumes:
-      - worker_etc:/var/ossec/etc
-      - worker_queue:/var/ossec/queue
-      - worker_logs:/var/ossec/logs
       - ./config/cluster/worker.conf:/wazuh-config-mount/etc/ossec.conf
 
   # A real agent enrolling against the master, to populate the agent metrics.
@@ -108,7 +102,6 @@ services:
       - exporter
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
     ports:
       - "9090:9090"
 
@@ -121,17 +114,5 @@ services:
     volumes:
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
       - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - grafana-data:/var/lib/grafana
     ports:
       - "3000:3000"
-
-volumes:
-  wazuh-indexer-data:
-  master_etc:
-  master_queue:
-  master_logs:
-  worker_etc:
-  worker_queue:
-  worker_logs:
-  prometheus-data:
-  grafana-data:

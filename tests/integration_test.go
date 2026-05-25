@@ -1,9 +1,11 @@
 //go:build integration
 
 // Package tests holds Docker-based integration tests that exercise the exporter
-// against a real Wazuh cluster. They are build-tagged `integration` and run only
-// via `go test -tags=integration ./tests/...` (with the docker-compose stack up),
-// never as part of the merge-gating unit run. See README.md.
+// against a real Wazuh manager — either the cluster stack (docker-compose.cluster.yml)
+// or the standalone stack (docker-compose.standalone.yml); the per-node test is
+// mode-aware. They are build-tagged `integration` and run only via
+// `go test -tags=integration ./tests/...` (with a stack up), never in the
+// merge-gating unit run.
 //
 // These assertions deliberately validate the cluster/per-node SHAPE against the
 // live API (not just "an endpoint responds"), because the project's history shows
@@ -68,6 +70,22 @@ func waitForNodes(t *testing.T, metric string, want int) string {
 	return body
 }
 
+// waitForMetric polls /metrics until the named metric appears (the exporter has
+// collected at least once), returning the final body. Tolerates a slow boot.
+func waitForMetric(t *testing.T, metric string) string {
+	t.Helper()
+	var body string
+	for i := 0; i < 60; i++ {
+		body = get(t, "/metrics")
+		if strings.Contains(body, metric) {
+			return body
+		}
+		time.Sleep(2 * time.Second)
+	}
+	t.Fatalf("%s never appeared in /metrics (exporter not collecting?)", metric)
+	return body
+}
+
 // distinctNodes returns the set of node="..." label values on lines of metric.
 func distinctNodes(body, metric string) []string {
 	re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(metric) + `\{[^}]*node="([^"]+)"`)
@@ -95,39 +113,52 @@ func TestExporterUpAndHealthy(t *testing.T) {
 	}
 }
 
-// TestClusterDiscoveryAndPerNode: the exporter discovers both cluster nodes and
-// collects manager-style metrics for EACH of them (master + worker), via the
-// /cluster/<node>/* API. This is the regression guard for per-node collection.
-func TestClusterDiscoveryAndPerNode(t *testing.T) {
-	// Wait for the worker to rejoin and be collected (the stack may still be coming up).
-	body := waitForNodes(t, "wazuh_manager_daemon_up", 2)
+// clusterEnabled reads wazuh_cluster_enabled from a /metrics body: (enabled, found).
+func clusterEnabled(body string) (enabled, found bool) {
+	m := regexp.MustCompile(`(?m)^wazuh_cluster_enabled\{[^}]*\}\s+(\d)`).FindStringSubmatch(body)
+	if m == nil {
+		return false, false
+	}
+	return m[1] == "1", true
+}
 
-	if !strings.Contains(body, "wazuh_cluster_enabled") {
-		t.Error("/metrics missing wazuh_cluster_enabled")
+// TestPerNodeCollection is the per-node collection regression guard, mode-aware so
+// it passes against EITHER stack: the cluster stack (>=2 nodes discovered via
+// /cluster/healthcheck, each collected through /cluster/<node>/*) or the
+// standalone stack (1 node via /manager/*, cluster_enabled=0, no node_info).
+func TestPerNodeCollection(t *testing.T) {
+	body := waitForMetric(t, "wazuh_cluster_enabled") // wait until collection is ready
+	enabled, _ := clusterEnabled(body)
+
+	want := 1
+	if enabled {
+		want = 2
+		// Wait for the worker to rejoin and be collected (the stack may still boot).
+		body = waitForNodes(t, "wazuh_manager_daemon_up", 2)
+		if nodes := distinctNodes(body, "wazuh_cluster_node_info"); len(nodes) < 2 {
+			t.Errorf("cluster discovery should find >=2 nodes, got %v", nodes)
+		}
+	} else if n := len(distinctNodes(body, "wazuh_cluster_node_info")); n != 0 {
+		t.Errorf("standalone must not emit cluster_node_info, got %d node(s)", n)
 	}
-	if nodes := distinctNodes(body, "wazuh_cluster_node_info"); len(nodes) < 2 {
-		t.Errorf("cluster discovery should find >=2 nodes, got %v", nodes)
-	}
-	// Per-node metrics must cover both nodes, not just the master.
+
+	// Per-node metrics must cover every node (2 in cluster, 1 in standalone).
 	for _, metric := range []string{
 		"wazuh_manager_daemon_up",
 		"wazuh_manager_info",
 		"wazuh_analysisd_events_received_total",
 		"wazuh_db_queries_received_total",
+		"wazuh_manager_config_valid",
 	} {
-		if nodes := distinctNodes(body, metric); len(nodes) < 2 {
-			t.Errorf("%s should cover >=2 nodes (per-node collection), got %v", metric, nodes)
+		if nodes := distinctNodes(body, metric); len(nodes) < want {
+			t.Errorf("%s should cover >=%d node(s), got %v", metric, want, nodes)
 		}
-	}
-	// config_valid is cluster-wide (one /cluster/configuration/validation call → per node).
-	if nodes := distinctNodes(body, "wazuh_manager_config_valid"); len(nodes) < 2 {
-		t.Errorf("config_valid should cover >=2 nodes, got %v", nodes)
 	}
 }
 
 // TestAgentMetricsPopulated: the real agent enrolled and shows up in the fleet metrics.
 func TestAgentMetricsPopulated(t *testing.T) {
-	body := get(t, "/metrics")
+	body := waitForMetric(t, "wazuh_agents_count") // agent enrollment + first scrape may lag
 	for _, want := range []string{"wazuh_agents{", "wazuh_agents_count"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("/metrics missing %s", want)
