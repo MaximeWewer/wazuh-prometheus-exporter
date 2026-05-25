@@ -175,37 +175,45 @@ func (c *ClusterCollector) Collect(ctx context.Context, ch chan<- prometheus.Met
 // standalone manager, or /cluster/<node> when clustered): daemon stats, daemon
 // up/down, log levels, info and daily totals. All best-effort.
 func (c *ClusterCollector) collectNode(ctx context.Context, ch chan<- prometheus.Metric, node, base string) {
-	get := func(path string) []byte {
+	// routine marks an endpoint whose failure is expected/benign and should be
+	// logged at debug, not warn. /stats (daily totals) returns HTTP 400 until Wazuh
+	// generates the totals file (~noon daily) — routine on a freshly-deployed node.
+	get := func(path string, routine bool) []byte {
 		b, err := c.client.Get(ctx, base+path)
 		if err != nil {
-			c.log.Warn().Str("component", "exporter").Str("collector", "cluster").
-				Str("node", node).Str("path", base+path).Err(err).Msg("node metric unavailable; skipping")
+			ev, msg := c.log.Warn(), "node metric unavailable; skipping"
+			if routine {
+				ev, msg = c.log.Debug(), "node metric not generated yet; skipping"
+			}
+			ev.Str("component", "exporter").Str("collector", "cluster").
+				Str("node", node).Str("path", base+path).Err(err).Msg(msg)
 			return nil
 		}
 		return b
 	}
-	if b := get("/daemons/stats"); b != nil {
+	if b := get("/daemons/stats", false); b != nil {
 		if err := emitDaemonsStats(ch, node, b); err != nil {
 			c.log.Warn().Str("component", "exporter").Str("collector", "cluster").
 				Str("node", node).Err(err).Msg("daemons stats; skipping")
 		}
 	}
-	if b := get("/status"); b != nil {
+	if b := get("/status", false); b != nil {
 		emitDaemonUp(ch, node, b)
 	}
-	if b := get("/logs/summary"); b != nil {
+	if b := get("/logs/summary", false); b != nil {
 		emitManagerLogs(ch, node, b)
 	}
-	if b := get("/info"); b != nil {
+	if b := get("/info", false); b != nil {
 		emitManagerInfo(ch, node, b)
 	}
-	if b := get("/stats"); b != nil {
+	// Daily totals: 400 until the totals file exists (~noon) → routine.
+	if b := get("/stats", true); b != nil {
 		emitManagerDailyStats(ch, node, b)
 	}
-	if b := get("/stats/hourly"); b != nil {
+	if b := get("/stats/hourly", true); b != nil {
 		emitHourlyStats(ch, node, b)
 	}
-	if b := get("/stats/weekly"); b != nil {
+	if b := get("/stats/weekly", true); b != nil {
 		emitWeeklyStats(ch, node, b)
 	}
 }
