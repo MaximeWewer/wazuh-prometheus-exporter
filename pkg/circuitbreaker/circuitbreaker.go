@@ -8,6 +8,7 @@ package circuitbreaker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -80,7 +81,8 @@ type Breaker struct {
 	state    State
 	failures int
 	openedAt time.Time
-	probing  bool // a half-open trial is in flight
+	probing  bool  // a half-open trial is in flight
+	lastErr  error // the failure that tripped the breaker, surfaced while open
 }
 
 // New builds a Breaker wrapping next.
@@ -149,15 +151,26 @@ func (b *Breaker) allow() (trial bool, err error) {
 	b.maybeHalfOpenLocked()
 	switch b.state {
 	case Open:
-		return false, ErrOpen
+		return false, b.openErrorLocked()
 	case HalfOpen:
 		if b.probing {
-			return false, ErrOpen // another trial is already in flight
+			return false, b.openErrorLocked() // another trial is already in flight
 		}
 		b.probing = true
 		return true, nil
 	}
 	return false, nil
+}
+
+// openErrorLocked returns the short-circuit error, embedding the failure that
+// tripped the breaker so the real cause (e.g. a TLS verification failure) is
+// visible on every masked scrape, not only in the logs before the breaker opened.
+// errors.Is(err, ErrOpen) still holds.
+func (b *Breaker) openErrorLocked() error {
+	if b.lastErr != nil {
+		return fmt.Errorf("%w (last error: %w)", ErrOpen, b.lastErr)
+	}
+	return ErrOpen
 }
 
 func (b *Breaker) clearProbing() {
@@ -176,6 +189,7 @@ func (b *Breaker) record(err error) {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
+		b.lastErr = err
 		b.onFailureLocked()
 		return
 	}
@@ -188,6 +202,7 @@ func (b *Breaker) onSuccessLocked() {
 	}
 	b.state = Closed
 	b.failures = 0
+	b.lastErr = nil
 }
 
 func (b *Breaker) onFailureLocked() {
@@ -205,5 +220,6 @@ func (b *Breaker) onFailureLocked() {
 func (b *Breaker) tripLocked() {
 	b.state = Open
 	b.openedAt = b.clock()
-	b.log.Warn().Str("component", "circuitbreaker").Int("failures", b.failures).Msg("circuit opened")
+	b.log.Warn().Str("component", "circuitbreaker").Int("failures", b.failures).
+		Err(b.lastErr).Msg("circuit opened")
 }

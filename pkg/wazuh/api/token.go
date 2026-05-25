@@ -73,7 +73,7 @@ func (tm *tokenManager) authenticateLocked(ctx context.Context) error {
 
 	resp, err := tm.httpc.Do(req) //nolint:gosec // G704: URL targets the operator-configured Wazuh API base; path is internal, not attacker-controlled
 	if err != nil {
-		return fmt.Errorf("authenticating to Wazuh API: %w", err)
+		return fmt.Errorf("authenticating to Wazuh API: %w", tlsHint(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 

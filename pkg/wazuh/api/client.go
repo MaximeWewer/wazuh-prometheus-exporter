@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,16 @@ import (
 
 	"github.com/MaximeWewer/wazuh-prometheus-exporter/pkg/config"
 )
+
+// tlsHint annotates a TLS certificate-verification failure with the config knobs
+// that fix it, so the cause is actionable rather than an opaque x509 message.
+func tlsHint(err error) error {
+	var ce *tls.CertificateVerificationError
+	if errors.As(err, &ce) {
+		return fmt.Errorf("%w [TLS verification failed: set WAZUH_API_CA_FILE to the CA that signed the Wazuh API certificate, or WAZUH_API_TLS_SKIP_VERIFY=true for a self-signed cert]", err)
+	}
+	return err
+}
 
 // maxResponseBytes caps how much of a response body the client will read, to
 // bound memory use against a misbehaving or hostile endpoint.
@@ -148,7 +159,7 @@ func (c *Client) doGet(ctx context.Context, path string) ([]byte, int, error) {
 
 	resp, err := c.httpc.Do(req) //nolint:gosec // G704: URL targets the operator-configured Wazuh API base; path is internal/derived, not attacker-controlled
 	if err != nil {
-		return nil, 0, fmt.Errorf("GET %s: %w", path, err)
+		return nil, 0, fmt.Errorf("GET %s: %w", path, tlsHint(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 

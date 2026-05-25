@@ -56,6 +56,25 @@ func TestBreaker_OpensAfterThresholdAndShortCircuits(t *testing.T) {
 	}
 }
 
+func TestBreaker_OpenErrorEmbedsCause(t *testing.T) {
+	cause := errors.New("tls: certificate signed by unknown authority")
+	fake := &fakeClient{err: cause}
+	b := New(fake, WithFailureThreshold(1), WithLogger(logger.New("error")))
+
+	if _, err := b.Get(context.Background(), "/x"); err == nil { // trips open
+		t.Fatal("expected backend error")
+	}
+	// While open, the short-circuit error must still match ErrOpen AND surface the
+	// underlying cause so the operator isn't left with an opaque "circuit breaker open".
+	_, err := b.Get(context.Background(), "/x")
+	if !errors.Is(err, ErrOpen) {
+		t.Errorf("err = %v, want errors.Is(ErrOpen)", err)
+	}
+	if !errors.Is(err, cause) {
+		t.Errorf("open error must embed the cause; err = %v", err)
+	}
+}
+
 func TestBreaker_HalfOpenClosesOnSuccess(t *testing.T) {
 	fake := &fakeClient{err: errors.New("boom")}
 	now := time.Unix(1000, 0)
