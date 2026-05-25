@@ -23,18 +23,43 @@ import (
 // is master-only (from the local .state). This is by design, not an error.
 type ClusterCollector struct {
 	client api.APIClient
-	node   string
+	node   string // resolved per scrape from /cluster/local/info
 	log    zerolog.Logger
 }
 
 // NewClusterCollector builds the cluster collector on the (decorated) API client.
-// node is the configured (master) node, used for the cluster-level gauge.
-func NewClusterCollector(client api.APIClient, node string, log zerolog.Logger) *ClusterCollector {
-	return &ClusterCollector{client: client, node: node, log: log}
+func NewClusterCollector(client api.APIClient, log zerolog.Logger) *ClusterCollector {
+	return &ClusterCollector{client: client, log: log}
 }
 
 // Name implements Collector.
 func (c *ClusterCollector) Name() string { return "cluster" }
+
+type clusterLocalInfo struct {
+	Data struct {
+		AffectedItems []struct {
+			Node string `json:"node"`
+		} `json:"affected_items"`
+	} `json:"data"`
+}
+
+// localNodeName resolves the exporter's local Wazuh node name from
+// /cluster/local/info (works in cluster and standalone mode). It is the `node`
+// label for the cluster-level gauge, the agent metrics, and — in standalone mode
+// — the per-node metrics. Falls back to "manager" when the endpoint is
+// unavailable (e.g. the API is down, in which case no metrics emit anyway).
+func localNodeName(ctx context.Context, client api.APIClient) string {
+	const fallback = "manager"
+	b, err := client.Get(ctx, "/cluster/local/info")
+	if err != nil {
+		return fallback
+	}
+	var li clusterLocalInfo
+	if json.Unmarshal(b, &li) == nil && len(li.Data.AffectedItems) > 0 && li.Data.AffectedItems[0].Node != "" {
+		return li.Data.AffectedItems[0].Node
+	}
+	return fallback
+}
 
 type clusterStatus struct {
 	Error   *int64  `json:"error"`
@@ -81,6 +106,9 @@ func (c *ClusterCollector) Collect(ctx context.Context, ch chan<- prometheus.Met
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	// Resolve the local node name from the API (replaces a configured value).
+	// Scrapes are serialized by the orchestrator, so this field write is safe.
+	c.node = localNodeName(ctx, c.client)
 
 	body, err := c.client.Get(ctx, "/cluster/status")
 	if err != nil {

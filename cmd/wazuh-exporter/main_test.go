@@ -70,7 +70,6 @@ func TestNewServer_AppliesTimeouts(t *testing.T) {
 func TestNewServer_NoCredentialsServesSelfMetricsOnly(t *testing.T) {
 	cfg := &config.Config{
 		ListenAddress: ":9555",
-		NodeName:      "manager",
 		ScrapeTimeout: time.Second,
 		APIPassword:   config.NewSecureString(""), // no credentials → domain collectors disabled
 	}
@@ -86,7 +85,7 @@ func TestNewServer_NoCredentialsServesSelfMetricsOnly(t *testing.T) {
 	s := string(body)
 
 	// No collectors → wazuh_up=0 and no domain series.
-	if !strings.Contains(s, `wazuh_up{node="manager"} 0`) {
+	if !strings.Contains(s, `wazuh_up 0`) {
 		t.Errorf("expected wazuh_up=0 with no credentials; body:\n%s", s)
 	}
 	if strings.Contains(s, "wazuh_cluster_enabled") || strings.Contains(s, "wazuh_agents{") {
@@ -106,7 +105,6 @@ func TestNewAPIChain_BadTLSReturnsNil(t *testing.T) {
 		APIPassword:   config.NewSecureString("p"),
 		APICAFile:     badCA, // unparseable → api.NewClient fails
 		ScrapeTimeout: time.Second,
-		NodeName:      "manager",
 	}
 	if cs := newAPIChain(cfg, monitoring.New("test", time.Now()), logger.New("error")); cs != nil {
 		t.Errorf("newAPIChain with bad TLS material must return nil (graceful degradation), got %d collectors", len(cs))

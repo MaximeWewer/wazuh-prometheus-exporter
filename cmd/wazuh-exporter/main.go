@@ -105,7 +105,7 @@ func newServer(ctx context.Context, cfg *config.Config, log zerolog.Logger) *htt
 		self.CollectorErrors.WithLabelValues(c.Name(), "panic")
 	}
 
-	exp := exporter.New(log, self, cfg.ScrapeTimeout, cfg.NodeName, collectors...)
+	exp := exporter.New(log, self, cfg.ScrapeTimeout, collectors...)
 
 	mainReg := prometheus.NewRegistry()
 	mainReg.MustRegister(exp)
@@ -175,8 +175,8 @@ func newAPIChain(cfg *config.Config, self *monitoring.Metrics, log zerolog.Logge
 	cached := cache.New(breaker, cfg.CacheTTL, cache.WithHooks(self.CacheHits.Inc, self.CacheMisses.Inc))
 	self.RegisterCircuitBreakerState(func() float64 { return float64(breaker.State()) })
 	return []exporter.Collector{
-		exporter.NewAgentsCollector(cached, cfg.NodeName, log),
-		exporter.NewClusterCollector(cached, cfg.NodeName, log),
+		exporter.NewAgentsCollector(cached, log),
+		exporter.NewClusterCollector(cached, log),
 	}
 }
 

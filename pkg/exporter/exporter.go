@@ -39,22 +39,19 @@ type Exporter struct {
 	mon            *monitoring.Metrics
 	collectors     []Collector
 	scrapeTimeout  time.Duration
-	node           string
 	maxConcurrency int
 
 	collectMu sync.Mutex  // serializes whole scrapes
 	ready     atomic.Bool // sticky: set once a collection first succeeds
 }
 
-// New builds an Exporter over the given domain collectors. node is the value of
-// the `node` label on wazuh_up (the manager the exporter serves).
-func New(log zerolog.Logger, mon *monitoring.Metrics, scrapeTimeout time.Duration, node string, collectors ...Collector) *Exporter {
+// New builds an Exporter over the given domain collectors.
+func New(log zerolog.Logger, mon *monitoring.Metrics, scrapeTimeout time.Duration, collectors ...Collector) *Exporter {
 	e := &Exporter{
 		log:            log,
 		mon:            mon,
 		collectors:     collectors,
 		scrapeTimeout:  scrapeTimeout,
-		node:           node,
 		maxConcurrency: defaultMaxConcurrency,
 	}
 	if len(collectors) == 0 {
@@ -149,5 +146,5 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		up = 1
 		e.ready.Store(true) // sticky readiness: first successful collection
 	}
-	ch <- prometheus.MustNewConstMetric(metrics.UpDesc, prometheus.GaugeValue, up, e.node)
+	ch <- prometheus.MustNewConstMetric(metrics.UpDesc, prometheus.GaugeValue, up)
 }

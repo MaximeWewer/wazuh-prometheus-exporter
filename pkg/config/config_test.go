@@ -36,9 +36,6 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.WebConfigFile != "" {
 		t.Errorf("WebConfigFile = %q, want empty default", cfg.WebConfigFile)
 	}
-	if cfg.NodeName != "manager" {
-		t.Errorf("NodeName = %q, want manager", cfg.NodeName)
-	}
 	if cfg.ServerReadTimeout != 10*time.Second {
 		t.Errorf("ServerReadTimeout = %v, want 10s", cfg.ServerReadTimeout)
 	}

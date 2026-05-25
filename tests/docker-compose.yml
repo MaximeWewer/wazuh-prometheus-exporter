@@ -95,7 +95,6 @@ services:
       - wazuh.master
     environment:
       WAZUH_LISTEN_ADDRESS: "0.0.0.0:9555"
-      WAZUH_NODE_NAME: "manager"
       WAZUH_API_URL: "https://wazuh.master:55000"
       WAZUH_API_USERNAME: "wazuh-wui"
       WAZUH_API_PASSWORD: "MyS3cr37P450r.*-"

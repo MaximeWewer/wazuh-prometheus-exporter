@@ -24,7 +24,6 @@ services:
     restart: unless-stopped
     environment:
       WAZUH_LISTEN_ADDRESS: "0.0.0.0:9555"
-      WAZUH_NODE_NAME: "wazuh-manager" # `node` label for wazuh_up/cluster_enabled + the standalone node
       WAZUH_API_URL: "https://your-wazuh-manager:55000"
       WAZUH_API_USERNAME: "wazuh-wui"
       WAZUH_API_PASSWORD: "CHANGE_ME" # or WAZUH_API_PASSWORD_FILE to read it from a mounted secret

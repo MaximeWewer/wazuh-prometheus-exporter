@@ -22,7 +22,7 @@ func (f fakeAPIClient) Get(_ context.Context, _ string) ([]byte, error) { return
 
 func newAgentsExporter(client fakeAPIClient) (*Exporter, *monitoring.Metrics) {
 	mon := monitoring.New("test", time.Now())
-	e := New(logger.New("error"), mon, time.Second, "manager", NewAgentsCollector(client, "manager", logger.New("error")))
+	e := New(logger.New("error"), mon, time.Second, NewAgentsCollector(client, logger.New("error")))
 	return e, mon
 }
 
@@ -45,7 +45,7 @@ func TestAgentsCollector_OverviewGroupsVersionsLastRegistered(t *testing.T) {
 			"last_registered_agent":[{"id":"003","name":"web01","version":"Wazuh v4.14.0","status":"active"}]}}`),
 	}}
 	mon := monitoring.New("test", time.Now())
-	e := New(logger.New("error"), mon, time.Second, "manager", NewAgentsCollector(client, "manager", logger.New("error")))
+	e := New(logger.New("error"), mon, time.Second, NewAgentsCollector(client, logger.New("error")))
 
 	expGroup := `
 # HELP wazuh_agents_group Number of Wazuh agents by group.
@@ -72,7 +72,7 @@ func TestAgentsCollector_OSAndOutdated(t *testing.T) {
 		"/agents/outdated": []byte(`{"data":{"total_affected_items":4}}`),
 	}}
 	mon := monitoring.New("test", time.Now())
-	e := New(logger.New("error"), mon, time.Second, "manager", NewAgentsCollector(client, "manager", logger.New("error")))
+	e := New(logger.New("error"), mon, time.Second, NewAgentsCollector(client, logger.New("error")))
 
 	expOS := `
 # HELP wazuh_agents_os Number of Wazuh agents by operating system.
@@ -100,7 +100,7 @@ func TestAgentsCollector_OverviewFailureKeepsStatusMetrics(t *testing.T) {
 		"/overview/agents":       []byte(`{"error":403,"message":"denied","data":{}}`),
 	}}
 	mon := monitoring.New("test", time.Now())
-	e := New(logger.New("error"), mon, time.Second, "manager", NewAgentsCollector(client, "manager", logger.New("error")))
+	e := New(logger.New("error"), mon, time.Second, NewAgentsCollector(client, logger.New("error")))
 	if n := testutil.CollectAndCount(e, "wazuh_agents"); n != 1 {
 		t.Errorf("status still emitted despite overview error, got %d", n)
 	}

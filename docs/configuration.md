@@ -21,7 +21,6 @@ warning and continues.
 
 | Variable | Default | Range / notes | Description |
 |----------|---------|---------------|-------------|
-| `WAZUH_NODE_NAME` | `manager` | string | Value of the `node` label for the cluster-level gauges (`wazuh_up`, `wazuh_cluster_enabled`) and for the single node in standalone mode. In a cluster, **set it to the master's cluster node name** so these match the per-node metric labels discovered from the cluster API (otherwise joining agent/up metrics to per-node metrics on `node` breaks). |
 | `WAZUH_SCRAPE_TIMEOUT` | `10s` | `1s`–`5m` | Per-scrape timeout (also the API HTTP client timeout). |
 | `WAZUH_CACHE_TTL` | `30s` | `5s`–`5m` | TTL of the API response cache between scrapes. The exporter makes several API calls per scrape (a few cluster-level calls plus ~7 per node), so keep this **≥ your Prometheus scrape interval** to serve repeat scrapes from cache and avoid hammering the Wazuh API. |
 
@@ -55,7 +54,7 @@ endpoints the exporter calls:
 | `GET /security/user/authenticate` | auth | any valid API user |
 | `GET /agents/summary/status`, `GET /overview/agents`, `GET /agents/outdated` | agent fleet (status, group/version/OS, last registered, outdated) | `agent:read` |
 | `GET /manager/{daemons/stats,info,configuration/validation,stats,stats/hourly,stats/weekly,status,logs/summary}` | standalone node: analysisd/remoted/wazuh-db stats, manager info, config validity, daily totals + hourly/weekly alert profiles, daemon status, log levels | `manager:read` |
-| `GET /cluster/status`, `GET /cluster/healthcheck`, `GET /cluster/ruleset/synchronization`, `GET /cluster/configuration/validation` | cluster detection/health, ruleset sync, per-node config validity (one call validates the whole cluster) | `cluster:read` |
+| `GET /cluster/local/info`, `GET /cluster/status`, `GET /cluster/healthcheck`, `GET /cluster/ruleset/synchronization`, `GET /cluster/configuration/validation` | local node name (the `node` label), cluster detection/health, ruleset sync, per-node config validity (one call validates the whole cluster) | `cluster:read` |
 | `GET /cluster/<node>/{daemons/stats,status,logs/summary,info,stats,stats/hourly,stats/weekly}` | per-node daemon stats, daemon health, log levels, info, daily totals + hourly/weekly profiles — every cluster node (master included) | `cluster:read` |
 
 > The RBAC action names above are a best-effort mapping — verify them against

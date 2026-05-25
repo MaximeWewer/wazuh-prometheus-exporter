@@ -49,7 +49,7 @@ func gatherUp(t *testing.T, e *Exporter) float64 {
 
 func TestExporter_UpOneOnSuccess(t *testing.T) {
 	mon := monitoring.New("test", time.Now())
-	e := New(logger.New("error"), mon, time.Second, "manager", fakeCollector{name: "ok"})
+	e := New(logger.New("error"), mon, time.Second, fakeCollector{name: "ok"})
 	if up := gatherUp(t, e); up != 1 {
 		t.Fatalf("wazuh_up = %v, want 1", up)
 	}
@@ -60,7 +60,7 @@ func TestExporter_UpOneOnSuccess(t *testing.T) {
 
 func TestExporter_UpZeroWhenAllFail(t *testing.T) {
 	mon := monitoring.New("test", time.Now())
-	e := New(logger.New("error"), mon, time.Second, "manager", fakeCollector{name: "bad", err: errors.New("nope")})
+	e := New(logger.New("error"), mon, time.Second, fakeCollector{name: "bad", err: errors.New("nope")})
 	if up := gatherUp(t, e); up != 0 {
 		t.Fatalf("wazuh_up = %v, want 0", up)
 	}
@@ -71,7 +71,7 @@ func TestExporter_UpZeroWhenAllFail(t *testing.T) {
 
 func TestExporter_PanicIsRecoveredAndCounted(t *testing.T) {
 	mon := monitoring.New("test", time.Now())
-	e := New(logger.New("error"), mon, time.Second, "manager", fakeCollector{name: "panicky", panics: true})
+	e := New(logger.New("error"), mon, time.Second, fakeCollector{name: "panicky", panics: true})
 	if up := gatherUp(t, e); up != 0 { // panic counts as failure
 		t.Fatalf("wazuh_up = %v, want 0", up)
 	}
@@ -82,7 +82,7 @@ func TestExporter_PanicIsRecoveredAndCounted(t *testing.T) {
 
 func TestExporter_PartialSuccessKeepsUpOne(t *testing.T) {
 	mon := monitoring.New("test", time.Now())
-	e := New(logger.New("error"), mon, time.Second, "manager",
+	e := New(logger.New("error"), mon, time.Second,
 		fakeCollector{name: "ok"},
 		fakeCollector{name: "bad", err: errors.New("x")},
 	)
@@ -95,12 +95,12 @@ func TestExporter_Readiness(t *testing.T) {
 	mon := monitoring.New("test", time.Now())
 
 	// Self-metrics-only mode (no collectors): ready immediately.
-	if e := New(logger.New("error"), mon, time.Second, "n"); !e.Ready() {
+	if e := New(logger.New("error"), mon, time.Second); !e.Ready() {
 		t.Error("no-collector exporter should be ready at construction")
 	}
 
 	// A failing collector: not ready before, still not ready after a failed scrape.
-	ef := New(logger.New("error"), mon, time.Second, "n", fakeCollector{name: "x", err: errors.New("down")})
+	ef := New(logger.New("error"), mon, time.Second, fakeCollector{name: "x", err: errors.New("down")})
 	if ef.Ready() {
 		t.Error("exporter with a collector should not be ready before any success")
 	}
@@ -112,7 +112,7 @@ func TestExporter_Readiness(t *testing.T) {
 	// A succeeding collector flips readiness; it then stays ready (sticky) even if
 	// a later collection fails.
 	flaky := &flakyCollector{}
-	es := New(logger.New("error"), mon, time.Second, "n", flaky)
+	es := New(logger.New("error"), mon, time.Second, flaky)
 	es.CollectOnce()
 	if !es.Ready() {
 		t.Fatal("readiness should flip true after first success")
@@ -138,7 +138,7 @@ func TestExporter_NoCollectorsUpZero(t *testing.T) {
 	// No collectors configured (e.g. no API credentials) → the exporter is not
 	// collecting Wazuh, so wazuh_up must be 0, not a misleading 1.
 	mon := monitoring.New("test", time.Now())
-	e := New(logger.New("error"), mon, time.Second, "manager")
+	e := New(logger.New("error"), mon, time.Second)
 	if up := gatherUp(t, e); up != 0 {
 		t.Fatalf("wazuh_up = %v, want 0 with no collectors", up)
 	}

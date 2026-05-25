@@ -19,7 +19,7 @@ func testMux() http.Handler {
 	self := monitoring.New("1.2.3-test", time.Now())
 	// Orchestrator with no domain collectors emits wazuh_up=0 (nothing collected)
 	// but is ready (self-metrics-only mode).
-	exp := exporter.New(logger.New("error"), self, time.Second, "manager")
+	exp := exporter.New(logger.New("error"), self, time.Second)
 	mainReg := prometheus.NewRegistry()
 	mainReg.MustRegister(exp)
 	return newMux(mainReg, self.Registry(), "1.2.3-test", time.Now().Add(-5*time.Second), exp.Ready)

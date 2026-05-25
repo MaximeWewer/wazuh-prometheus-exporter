@@ -23,12 +23,13 @@ var BuildInfoDesc = prometheus.NewDesc(
 )
 
 // UpDesc is the wazuh_up gauge: 1 when the last Wazuh collection succeeded, 0
-// when it failed. Labelled by `node` (the manager the exporter serves) so it is
-// node-scoped like every other domain metric. Emitted by the orchestrator.
+// when it failed. It carries NO label: it reports the exporter's own collection
+// health, not a per-node property, and must be emittable even when the API is
+// down (so the node name cannot be discovered). Emitted by the orchestrator.
 var UpDesc = prometheus.NewDesc(
 	prometheus.BuildFQName(Namespace, "", "up"),
 	"Whether the last Wazuh collection succeeded (1) or failed (0).",
-	[]string{"node"}, nil,
+	nil, nil,
 )
 
 const analysisdSubsystem = "analysisd"

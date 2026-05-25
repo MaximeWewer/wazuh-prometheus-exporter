@@ -5,7 +5,7 @@ The exporter serves two endpoints:
 - **`/metrics`** — Wazuh domain metrics (`wazuh_*`).
 - **`/internal/metrics`** — exporter self-metrics (`wazuh_exporter_*`) plus Go runtime (`go_*`) and process (`process_*`) metrics.
 
-Every domain metric carries a `node` label (the manager/worker node it describes). Counters end in `_total` and should be queried with `rate()`.
+Almost every domain metric carries a `node` label (the manager/worker node it describes); the node name is discovered from the Wazuh API (`/cluster/local/info` for the local node, `/cluster/healthcheck` for the others), not configured. The exception is `wazuh_up`, which is exporter-global (no label). Counters end in `_total` and should be queried with `rate()`.
 
 All metrics come from the Wazuh **API** — the exporter no longer reads the deprecated local `.state` files, so it needs no shared volume. Per-node metrics (analysisd, remoted, wazuh-db, daemon status, logs, info, daily totals) come from `/manager/*` on a standalone manager, or from `/cluster/<node>/*` for **every** node (master included) when clustered — so they are reported per cluster node.
 
@@ -15,7 +15,7 @@ All metrics come from the Wazuh **API** — the exporter no longer reads the dep
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `wazuh_up` | gauge | `node` | `1` if at least one collector succeeded this scrape, else `0` (labelled by the manager the exporter serves). |
+| `wazuh_up` | gauge | _(none)_ | `1` if at least one collector succeeded this scrape, else `0`. No label: it reports the exporter's own collection health, not a per-node property (and must be emittable when the API — and thus the node name — is unreachable). |
 
 ### analysisd (API: `daemons/stats`)
 

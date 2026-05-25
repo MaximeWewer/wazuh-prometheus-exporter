@@ -27,12 +27,6 @@ type Config struct {
 	APICertFile      string
 	APIKeyFile       string
 
-	// NodeName is the `node` label for the cluster-level gauges (wazuh_up,
-	// wazuh_cluster_enabled) and for the single node in standalone mode. In a
-	// cluster, set it to the master's cluster node name so those metrics share the
-	// `node` value used by the per-node metrics discovered from /cluster/healthcheck
-	// (otherwise joining agent/up metrics to per-node metrics on `node` breaks).
-	NodeName      string
 	ListenAddress string
 	LogLevel      string
 	WebConfigFile string
@@ -49,7 +43,6 @@ type Config struct {
 // Defaults and clamp bounds.
 const (
 	defaultAPIURL        = "https://localhost:55000"
-	defaultNodeName      = "manager"
 	defaultListenAddress = ":9555"
 	defaultLogLevel      = "info"
 
@@ -87,7 +80,6 @@ func Load() (*Config, error) {
 		APICAFile:             getEnvOrDefault("WAZUH_API_CA_FILE", ""),
 		APICertFile:           getEnvOrDefault("WAZUH_API_CERT_FILE", ""),
 		APIKeyFile:            getEnvOrDefault("WAZUH_API_KEY_FILE", ""),
-		NodeName:              getEnvOrDefault("WAZUH_NODE_NAME", defaultNodeName),
 		ListenAddress:         getEnvOrDefault("WAZUH_LISTEN_ADDRESS", defaultListenAddress),
 		LogLevel:              level,
 		WebConfigFile:         getEnvOrDefault("WAZUH_WEB_CONFIG_FILE", ""),

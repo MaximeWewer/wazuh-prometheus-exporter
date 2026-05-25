@@ -18,14 +18,13 @@ import (
 // the cache→breaker→client chain supplied at construction.
 type AgentsCollector struct {
 	client api.APIClient
-	node   string
+	node   string // resolved per scrape from /cluster/local/info
 	log    zerolog.Logger
 }
 
-// NewAgentsCollector builds the agents collector. client is the (decorated)
-// Wazuh API client; node is the value of the `node` label.
-func NewAgentsCollector(client api.APIClient, node string, log zerolog.Logger) *AgentsCollector {
-	return &AgentsCollector{client: client, node: node, log: log}
+// NewAgentsCollector builds the agents collector on the (decorated) Wazuh API client.
+func NewAgentsCollector(client api.APIClient, log zerolog.Logger) *AgentsCollector {
+	return &AgentsCollector{client: client, log: log}
 }
 
 // Name implements Collector.
@@ -60,6 +59,10 @@ func (c *AgentsCollector) Collect(ctx context.Context, ch chan<- prometheus.Metr
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	// Resolve the `node` label from the API (replaces a configured value).
+	// Scrapes are serialized by the orchestrator, so this field write is safe.
+	c.node = localNodeName(ctx, c.client)
+
 	body, err := c.client.Get(ctx, "/agents/summary/status")
 	if err != nil {
 		return fmt.Errorf("agents summary: %w", err)

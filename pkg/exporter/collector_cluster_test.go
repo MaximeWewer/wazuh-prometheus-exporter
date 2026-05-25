@@ -38,7 +38,7 @@ func (f *fakeRouter) Get(_ context.Context, path string) ([]byte, error) {
 
 func newClusterExporter(client *fakeRouter) (*Exporter, *monitoring.Metrics) {
 	mon := monitoring.New("test", time.Now())
-	return New(logger.New("error"), mon, time.Second, "manager", NewClusterCollector(client, "manager", logger.New("error"))), mon
+	return New(logger.New("error"), mon, time.Second, NewClusterCollector(client, logger.New("error"))), mon
 }
 
 func TestClusterCollector_StandaloneNoHealthcheck(t *testing.T) {
