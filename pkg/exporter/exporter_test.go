@@ -91,6 +91,49 @@ func TestExporter_PartialSuccessKeepsUpOne(t *testing.T) {
 	}
 }
 
+func TestExporter_Readiness(t *testing.T) {
+	mon := monitoring.New("test", time.Now())
+
+	// Self-metrics-only mode (no collectors): ready immediately.
+	if e := New(logger.New("error"), mon, time.Second, "n"); !e.Ready() {
+		t.Error("no-collector exporter should be ready at construction")
+	}
+
+	// A failing collector: not ready before, still not ready after a failed scrape.
+	ef := New(logger.New("error"), mon, time.Second, "n", fakeCollector{name: "x", err: errors.New("down")})
+	if ef.Ready() {
+		t.Error("exporter with a collector should not be ready before any success")
+	}
+	ef.CollectOnce()
+	if ef.Ready() {
+		t.Error("readiness must stay false after a failed collection")
+	}
+
+	// A succeeding collector flips readiness; it then stays ready (sticky) even if
+	// a later collection fails.
+	flaky := &flakyCollector{}
+	es := New(logger.New("error"), mon, time.Second, "n", flaky)
+	es.CollectOnce()
+	if !es.Ready() {
+		t.Fatal("readiness should flip true after first success")
+	}
+	flaky.fail = true
+	es.CollectOnce()
+	if !es.Ready() {
+		t.Error("readiness must be sticky (stay true) across a later failure")
+	}
+}
+
+type flakyCollector struct{ fail bool }
+
+func (f *flakyCollector) Name() string { return "flaky" }
+func (f *flakyCollector) Collect(_ context.Context, _ chan<- prometheus.Metric) error {
+	if f.fail {
+		return errors.New("down")
+	}
+	return nil
+}
+
 func TestExporter_NoCollectorsUpZero(t *testing.T) {
 	// No collectors configured (e.g. no API credentials) → the exporter is not
 	// collecting Wazuh, so wazuh_up must be 0, not a misleading 1.

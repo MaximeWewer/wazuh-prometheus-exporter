@@ -6,6 +6,7 @@ package exporter
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -41,13 +42,14 @@ type Exporter struct {
 	node           string
 	maxConcurrency int
 
-	collectMu sync.Mutex // serializes whole scrapes
+	collectMu sync.Mutex  // serializes whole scrapes
+	ready     atomic.Bool // sticky: set once a collection first succeeds
 }
 
 // New builds an Exporter over the given domain collectors. node is the value of
 // the `node` label on wazuh_up (the manager the exporter serves).
 func New(log zerolog.Logger, mon *monitoring.Metrics, scrapeTimeout time.Duration, node string, collectors ...Collector) *Exporter {
-	return &Exporter{
+	e := &Exporter{
 		log:            log,
 		mon:            mon,
 		collectors:     collectors,
@@ -55,6 +57,32 @@ func New(log zerolog.Logger, mon *monitoring.Metrics, scrapeTimeout time.Duratio
 		node:           node,
 		maxConcurrency: defaultMaxConcurrency,
 	}
+	if len(collectors) == 0 {
+		// Self-metrics-only mode (no API credentials): nothing to reach, so the
+		// exporter is ready as soon as it is serving.
+		e.ready.Store(true)
+	}
+	return e
+}
+
+// Ready reports readiness: true once a collection has succeeded at least once
+// (sticky — it does not flip back on a later transient Wazuh outage, so it never
+// suppresses the wazuh_up=0 signal). Self-metrics-only mode is ready immediately.
+func (e *Exporter) Ready() bool { return e.ready.Load() }
+
+// CollectOnce runs one collection, discarding the metrics. It lets a caller drive
+// readiness / self-metrics without waiting for a Prometheus scrape.
+func (e *Exporter) CollectOnce() {
+	ch := make(chan prometheus.Metric, 64)
+	done := make(chan struct{})
+	go func() {
+		for range ch { //nolint:revive // drain
+		}
+		close(done)
+	}()
+	e.Collect(ch)
+	close(ch)
+	<-done
 }
 
 // Describe is a no-op: descriptors are emitted dynamically via MustNewConstMetric
@@ -119,6 +147,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	up := 0.0
 	if anySuccess {
 		up = 1
+		e.ready.Store(true) // sticky readiness: first successful collection
 	}
 	ch <- prometheus.MustNewConstMetric(metrics.UpDesc, prometheus.GaugeValue, up, e.node)
 }

@@ -108,12 +108,36 @@ func newServer(cfg *config.Config, log zerolog.Logger) *http.Server {
 	mainReg := prometheus.NewRegistry()
 	mainReg.MustRegister(exp)
 
+	// Prime readiness in the background so /ready can flip without waiting for the
+	// first Prometheus scrape (otherwise a Service gated on readiness would never
+	// be scraped, never flip ready — a deadlock). Exits once ready (sticky).
+	go primeReadiness(exp)
+
 	return &http.Server{
 		Addr:         cfg.ListenAddress,
-		Handler:      newMux(mainReg, self.Registry(), Version, started),
+		Handler:      newMux(mainReg, self.Registry(), Version, started, exp.Ready),
 		ReadTimeout:  cfg.ServerReadTimeout,
 		WriteTimeout: cfg.ServerWriteTimeout,
 		IdleTimeout:  cfg.ServerIdleTimeout,
+	}
+}
+
+// primeReadiness runs collections until the first one succeeds (driving /ready
+// independently of Prometheus). Self-metrics-only mode is already ready, so this
+// returns immediately. While the Wazuh API is still coming up it retries with an
+// exponential backoff (1s → 30s): short at first so /ready flips within ~a second
+// of the API becoming reachable, then backing off so a long outage isn't chatty.
+func primeReadiness(exp *exporter.Exporter) {
+	const minWait, maxWait = time.Second, 30 * time.Second
+	for wait := minWait; !exp.Ready(); {
+		exp.CollectOnce()
+		if exp.Ready() {
+			return
+		}
+		time.Sleep(wait)
+		if wait *= 2; wait > maxWait {
+			wait = maxWait
+		}
 	}
 }
 

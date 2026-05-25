@@ -17,11 +17,12 @@ import (
 
 func testMux() http.Handler {
 	self := monitoring.New("1.2.3-test", time.Now())
-	// Orchestrator with no domain collectors emits wazuh_up=0 (nothing collected).
+	// Orchestrator with no domain collectors emits wazuh_up=0 (nothing collected)
+	// but is ready (self-metrics-only mode).
 	exp := exporter.New(logger.New("error"), self, time.Second, "manager")
 	mainReg := prometheus.NewRegistry()
 	mainReg.MustRegister(exp)
-	return newMux(mainReg, self.Registry(), "1.2.3-test", time.Now().Add(-5*time.Second))
+	return newMux(mainReg, self.Registry(), "1.2.3-test", time.Now().Add(-5*time.Second), exp.Ready)
 }
 
 func TestHealthEndpoint(t *testing.T) {
@@ -43,6 +44,30 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 	if _, ok := body["uptime_seconds"]; !ok {
 		t.Error("uptime_seconds missing")
+	}
+}
+
+func TestReadyEndpoint_Ready(t *testing.T) {
+	rec := httptest.NewRecorder()
+	testMux().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (self-metrics-only is ready)", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"ready"`) {
+		t.Errorf("body = %q, want status ready", rec.Body.String())
+	}
+}
+
+func TestReadyEndpoint_NotReady(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	mux := newMux(reg, reg, "v", time.Now(), func() bool { return false })
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 when not ready", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "not ready") {
+		t.Errorf("body = %q, want status not ready", rec.Body.String())
 	}
 }
 
