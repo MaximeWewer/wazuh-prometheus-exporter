@@ -157,13 +157,13 @@ spec:
 
 ## Endpoints
 
-| Path                | Purpose                                                         |
-|---------------------|-----------------------------------------------------------------|
-| `/`                 | HTML info page                                                  |
+| Path                | Purpose                                                             |
+|---------------------|---------------------------------------------------------------------|
+| `/`                 | HTML info page                                                      |
 | `/health`           | Liveness — JSON `{status,version,uptime_seconds}`, 200 once serving |
 | `/ready`            | Readiness — 200 once a collection has succeeded (sticky), else 503  |
-| `/metrics`          | Wazuh domain metrics (`wazuh_*`)                                |
-| `/internal/metrics` | Exporter self-metrics (`wazuh_exporter_*`, `go_*`, `process_*`) |
+| `/metrics`          | Wazuh domain metrics (`wazuh_*`)                                    |
+| `/internal/metrics` | Exporter self-metrics (`wazuh_exporter_*`, `go_*`, `process_*`)     |
 
 Default listen address: `:9555`.
 

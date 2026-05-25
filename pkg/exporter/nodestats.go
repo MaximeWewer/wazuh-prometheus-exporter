@@ -29,15 +29,26 @@ func emitDaemonUp(ch chan<- prometheus.Metric, node string, body []byte) {
 	if json.Unmarshal(body, &ms) != nil {
 		return
 	}
-	if (ms.Error != nil && *ms.Error != 0) || len(ms.Data.AffectedItems) == 0 {
+	if ms.Error != nil && *ms.Error != 0 {
 		return
 	}
-	for daemon, state := range ms.Data.AffectedItems[0] {
-		up := 0.0
-		if strings.EqualFold(state, "running") {
-			up = 1
+	// Dedup by daemon name across all affected_items: a daemon repeated in two
+	// elements would emit a duplicate (desc, labelvalues) series and fail Gather
+	// (500). Iterating every item (not just [0]) also avoids dropping daemons if
+	// Wazuh ever splits the list across elements.
+	seen := make(map[string]struct{})
+	for _, item := range ms.Data.AffectedItems {
+		for daemon, state := range item {
+			if _, dup := seen[daemon]; dup {
+				continue
+			}
+			seen[daemon] = struct{}{}
+			up := 0.0
+			if strings.EqualFold(state, "running") {
+				up = 1
+			}
+			ch <- prometheus.MustNewConstMetric(metrics.ManagerDaemonUp, prometheus.GaugeValue, up, node, daemon)
 		}
-		ch <- prometheus.MustNewConstMetric(metrics.ManagerDaemonUp, prometheus.GaugeValue, up, node, daemon)
 	}
 }
 

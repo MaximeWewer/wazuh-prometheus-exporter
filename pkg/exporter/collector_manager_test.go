@@ -71,6 +71,20 @@ wazuh_manager_logs_total{level="warning",node="manager",tag="wazuh-analysisd"} 0
 	}
 }
 
+func TestNode_DaemonUpDeduplicates(t *testing.T) {
+	// wazuh-analysisd appears in two affected_items; it must collapse to ONE
+	// series (a duplicate (desc,labels) tuple would fail registry.Gather → 500).
+	e := newNodeExporter(map[string]string{
+		"/manager/status": `{"data":{"affected_items":[
+			{"wazuh-analysisd":"running"},
+			{"wazuh-analysisd":"stopped","wazuh-remoted":"running"}
+		]}}`,
+	})
+	if n := testutil.CollectAndCount(e, "wazuh_manager_daemon_up"); n != 2 {
+		t.Errorf("daemon_up series = %d, want 2 (analysisd deduped + remoted)", n)
+	}
+}
+
 func TestNode_HourlyWeeklyStats(t *testing.T) {
 	e := newNodeExporter(map[string]string{
 		"/manager/stats/hourly": `{"data":{"affected_items":[{"averages":[5,0,0,12],"interactions":17}]}}`,

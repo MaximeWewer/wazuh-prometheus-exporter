@@ -21,7 +21,7 @@ warning and continues.
 
 | Variable | Default | Range / notes | Description |
 |----------|---------|---------------|-------------|
-| `WAZUH_NODE_NAME` | `manager` | string | Value of the `node` label for the cluster-level gauges (`wazuh_up`, `wazuh_cluster_enabled`) and for the single node in standalone mode. In a cluster, per-node metrics use the node names discovered from the cluster API. |
+| `WAZUH_NODE_NAME` | `manager` | string | Value of the `node` label for the cluster-level gauges (`wazuh_up`, `wazuh_cluster_enabled`) and for the single node in standalone mode. In a cluster, **set it to the master's cluster node name** so these match the per-node metric labels discovered from the cluster API (otherwise joining agent/up metrics to per-node metrics on `node` breaks). |
 | `WAZUH_SCRAPE_TIMEOUT` | `10s` | `1s`–`5m` | Per-scrape timeout (also the API HTTP client timeout). |
 | `WAZUH_CACHE_TTL` | `30s` | `5s`–`5m` | TTL of the API response cache between scrapes. The exporter makes several API calls per scrape (a few cluster-level calls plus ~7 per node), so keep this **≥ your Prometheus scrape interval** to serve repeat scrapes from cache and avoid hammering the Wazuh API. |
 

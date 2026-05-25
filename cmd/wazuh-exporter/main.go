@@ -1,11 +1,11 @@
 // Command wazuh-exporter is a Prometheus exporter for Wazuh.
 //
-// It loads configuration from the environment, then serves /metrics, /health
-// and an info page over an exporter-toolkit HTTP server (optional TLS and
-// basic-auth via a web-config file), shutting down gracefully on SIGTERM/SIGINT.
-// newServer wires the domain collectors (local .state files plus, when API
-// credentials are configured, the cache→breaker→client Wazuh API chain) and the
-// self/up metrics.
+// It loads configuration from the environment, then serves /metrics,
+// /internal/metrics, /health, /ready and an info page over an exporter-toolkit
+// HTTP server (optional TLS and basic-auth via a web-config file), shutting down
+// gracefully on SIGTERM/SIGINT. It is API-only: newServer wires the domain
+// collectors on the cache→breaker→client Wazuh API chain when API credentials are
+// configured (otherwise only self-metrics are served) plus the self/up metrics.
 package main
 
 import (
@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"os/signal"
@@ -75,12 +76,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 
-	return serve(ctx, newServer(cfg, log), cfg, log)
+	return serve(ctx, newServer(ctx, cfg, log), cfg, log)
 }
 
 // newServer builds the exporter HTTP server with the configured timeouts. Addr
 // is informational only — exporter-toolkit binds via FlagConfig.WebListenAddresses.
-func newServer(cfg *config.Config, log zerolog.Logger) *http.Server {
+// ctx scopes the background readiness primer to the process lifetime.
+func newServer(ctx context.Context, cfg *config.Config, log zerolog.Logger) *http.Server {
 	started := time.Now()
 
 	self := monitoring.New(Version, started)
@@ -110,8 +112,8 @@ func newServer(cfg *config.Config, log zerolog.Logger) *http.Server {
 
 	// Prime readiness in the background so /ready can flip without waiting for the
 	// first Prometheus scrape (otherwise a Service gated on readiness would never
-	// be scraped, never flip ready — a deadlock). Exits once ready (sticky).
-	go primeReadiness(exp)
+	// be scraped, never flip ready — a deadlock). Exits once ready (sticky) or on ctx.
+	go primeReadiness(ctx, exp)
 
 	return &http.Server{
 		Addr:         cfg.ListenAddress,
@@ -125,16 +127,23 @@ func newServer(cfg *config.Config, log zerolog.Logger) *http.Server {
 // primeReadiness runs collections until the first one succeeds (driving /ready
 // independently of Prometheus). Self-metrics-only mode is already ready, so this
 // returns immediately. While the Wazuh API is still coming up it retries with an
-// exponential backoff (1s → 30s): short at first so /ready flips within ~a second
-// of the API becoming reachable, then backing off so a long outage isn't chatty.
-func primeReadiness(exp *exporter.Exporter) {
+// exponential backoff (1s → 30s) with jitter: short at first so /ready flips
+// within ~a second of the API becoming reachable, then backing off so a long
+// outage isn't chatty. The jitter de-synchronizes a fleet of exporters started
+// together so they don't retry a recovering API in lockstep. It also returns when
+// ctx is cancelled (shutdown), so it never outlives the server.
+func primeReadiness(ctx context.Context, exp *exporter.Exporter) {
 	const minWait, maxWait = time.Second, 30 * time.Second
 	for wait := minWait; !exp.Ready(); {
 		exp.CollectOnce()
 		if exp.Ready() {
 			return
 		}
-		time.Sleep(wait)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait + rand.N(wait/4)): //nolint:gosec // backoff jitter, not security-sensitive; up to +25%
+		}
 		if wait *= 2; wait > maxWait {
 			wait = maxWait
 		}

@@ -27,6 +27,11 @@ type Config struct {
 	APICertFile      string
 	APIKeyFile       string
 
+	// NodeName is the `node` label for the cluster-level gauges (wazuh_up,
+	// wazuh_cluster_enabled) and for the single node in standalone mode. In a
+	// cluster, set it to the master's cluster node name so those metrics share the
+	// `node` value used by the per-node metrics discovered from /cluster/healthcheck
+	// (otherwise joining agent/up metrics to per-node metrics on `node` breaks).
 	NodeName      string
 	ListenAddress string
 	LogLevel      string

@@ -55,7 +55,7 @@ func TestNewServer_AppliesTimeouts(t *testing.T) {
 		ServerWriteTimeout: 22 * time.Second,
 		ServerIdleTimeout:  33 * time.Second,
 	}
-	srv := newServer(cfg, logger.New("error"))
+	srv := newServer(context.Background(), cfg, logger.New("error"))
 	if srv.ReadTimeout != 11*time.Second || srv.WriteTimeout != 22*time.Second || srv.IdleTimeout != 33*time.Second {
 		t.Fatalf("timeouts not applied: read=%v write=%v idle=%v", srv.ReadTimeout, srv.WriteTimeout, srv.IdleTimeout)
 	}
@@ -74,7 +74,7 @@ func TestNewServer_NoCredentialsServesSelfMetricsOnly(t *testing.T) {
 		ScrapeTimeout: time.Second,
 		APIPassword:   config.NewSecureString(""), // no credentials → domain collectors disabled
 	}
-	ts := httptest.NewServer(newServer(cfg, logger.New("error")).Handler)
+	ts := httptest.NewServer(newServer(context.Background(), cfg, logger.New("error")).Handler)
 	defer ts.Close()
 
 	resp, err := http.Get(ts.URL + "/metrics")
