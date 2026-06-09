@@ -286,7 +286,7 @@ jobs:
         fi
 
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         tag_name: v${{ needs.prepare-build.outputs.version }}
         name: Release ${{ needs.prepare-build.outputs.version }}
@@ -334,7 +334,7 @@ jobs:
       run: echo "lower=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
     - name: Install Helm
-      uses: azure/setup-helm@v4
+      uses: azure/setup-helm@v5
       with:
         version: 'latest'
 
@@ -368,7 +368,7 @@ jobs:
         echo "Pushed oci://${{ env.REGISTRY }}/${{ steps.owner.outputs.lower }}/charts/wazuh-prometheus-exporter:${VERSION}"
 
     - name: Attach chart to the GitHub release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         tag_name: v${{ needs.prepare-build.outputs.version }}
         files: wazuh-prometheus-exporter-${{ needs.prepare-build.outputs.version }}.tgz
