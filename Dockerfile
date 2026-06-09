@@ -1,7 +1,7 @@
 # ---- build stage ----
 # Runs on the native builder arch ($BUILDPLATFORM) and cross-compiles the static
 # binary to the target arch — no QEMU emulation of the Go build (CGO is off).
-FROM --platform=$BUILDPLATFORM golang:1.26.3-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
