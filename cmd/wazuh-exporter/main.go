@@ -92,7 +92,7 @@ func newServer(ctx context.Context, cfg *config.Config, log zerolog.Logger) *htt
 	// with none configured, only self-metrics are served.
 	var collectors []exporter.Collector
 	if cfg.APIUsername != "" && !cfg.APIPassword.Empty() {
-		collectors = append(collectors, newAPIChain(cfg, self, log)...)
+		collectors = append(collectors, newAPIChain(ctx, cfg, self, log)...)
 	} else {
 		log.Warn().Msg("domain collectors disabled: no API credentials")
 	}
@@ -156,7 +156,16 @@ func primeReadiness(ctx context.Context, exp *exporter.Exporter) {
 // and returns the API collectors built on that single shared chain. It returns
 // nil (logging the error) if the client cannot be built, so a bad API config
 // never aborts startup.
-func newAPIChain(cfg *config.Config, self *monitoring.Metrics, log zerolog.Logger) []exporter.Collector {
+func newAPIChain(ctx context.Context, cfg *config.Config, self *monitoring.Metrics, log zerolog.Logger) []exporter.Collector {
+	// The HTTP client timeout is a wall-clock ceiling only; each call is really
+	// bounded by its request context (the scrape timeout for a scrape, the cache's
+	// background fetch budget for a refresh). It must be the larger of the two, or
+	// it would cap a background refresh at the scrape timeout and a slow endpoint
+	// could never cache.
+	httpTimeout := cfg.ScrapeTimeout
+	if cfg.BackgroundFetchTimeout > httpTimeout {
+		httpTimeout = cfg.BackgroundFetchTimeout
+	}
 	client, err := api.NewClient(api.Options{
 		BaseURL:    cfg.APIURL,
 		Username:   cfg.APIUsername,
@@ -165,7 +174,7 @@ func newAPIChain(cfg *config.Config, self *monitoring.Metrics, log zerolog.Logge
 		CertFile:   cfg.APICertFile,
 		KeyFile:    cfg.APIKeyFile,
 		SkipVerify: cfg.APITLSSkipVerify,
-		Timeout:    cfg.ScrapeTimeout,
+		Timeout:    httpTimeout,
 		Logger:     log,
 	})
 	if err != nil {
@@ -173,7 +182,12 @@ func newAPIChain(cfg *config.Config, self *monitoring.Metrics, log zerolog.Logge
 		return nil
 	}
 	breaker := circuitbreaker.New(client, circuitbreaker.WithLogger(log))
-	cached := cache.New(breaker, cfg.CacheTTL, cache.WithHooks(self.CacheHits.Inc, self.CacheMisses.Inc))
+	cached := cache.New(breaker, cfg.CacheTTL,
+		cache.WithHooks(self.CacheHits.Inc, self.CacheMisses.Inc),
+		cache.WithMaxStale(cfg.CacheMaxStale),
+		cache.WithFetchTimeout(cfg.BackgroundFetchTimeout),
+		cache.WithBaseContext(ctx),
+	)
 	self.RegisterCircuitBreakerState(func() float64 { return float64(breaker.State()) })
 	return []exporter.Collector{
 		exporter.NewAgentsCollector(cached, log),

@@ -106,7 +106,7 @@ func TestNewAPIChain_BadTLSReturnsNil(t *testing.T) {
 		APICAFile:     badCA, // unparseable → api.NewClient fails
 		ScrapeTimeout: time.Second,
 	}
-	if cs := newAPIChain(cfg, monitoring.New("test", time.Now()), logger.New("error")); cs != nil {
+	if cs := newAPIChain(context.Background(), cfg, monitoring.New("test", time.Now()), logger.New("error")); cs != nil {
 		t.Errorf("newAPIChain with bad TLS material must return nil (graceful degradation), got %d collectors", len(cs))
 	}
 }

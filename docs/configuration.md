@@ -21,9 +21,11 @@ warning and continues.
 
 | Variable | Default | Range / notes | Description |
 |----------|---------|---------------|-------------|
-| `WAZUH_SCRAPE_TIMEOUT` | `10s` | `1s`–`5m` | Per-scrape timeout (also the API HTTP client timeout). |
+| `WAZUH_SCRAPE_TIMEOUT` | `10s` | `1s`–`5m` | Per-scrape timeout: the deadline on the context driving a `/metrics` scrape. |
 | `WAZUH_STARTUP_GRACE` | `0` (off) | `0`–`10m` | Quiet-startup window for a slow-to-boot Wazuh: until the first successful collection (or this window elapses), collection failures log at `warn` ("waiting for Wazuh API") instead of `error`. Metrics (`wazuh_up=0`, `collector_errors_total`) and readiness are unaffected. |
-| `WAZUH_CACHE_TTL` | `30s` | `5s`–`5m` | TTL of the API response cache between scrapes. The exporter makes several API calls per scrape (a few cluster-level calls plus ~7 per node), so keep this **≥ your Prometheus scrape interval** to serve repeat scrapes from cache and avoid hammering the Wazuh API. |
+| `WAZUH_CACHE_TTL` | `30s` | `5s`–`5m` | Freshness window of the API response cache. Within the TTL a scrape is served from cache. The exporter makes several API calls per scrape (a few cluster-level calls plus ~7 per node), so keep this **≥ your Prometheus scrape interval** to serve repeat scrapes from cache and avoid hammering the Wazuh API. |
+| `WAZUH_CACHE_MAX_STALE` | `2m` | `0`–`1h` | Stale-while-revalidate window past the TTL. An expired-but-still-recent cached response is served **immediately** while a refresh runs in the background, so a slow endpoint (e.g. cluster config validation) never blocks the scrape. Past `TTL + MAX_STALE` the entry is dropped and the next scrape fetches fresh (so a dead backend never serves ancient data). `0` disables stale serving. |
+| `WAZUH_BACKGROUND_FETCH_TIMEOUT` | `30s` | `1s`–`5m` | Budget for a background cache refresh, independent of the scrape timeout. Set it above the latency of your slowest endpoint so that endpoint can complete and cache even when it is slower than `WAZUH_SCRAPE_TIMEOUT`. Also raises the API HTTP client's wall-clock ceiling to `max(scrape, background)`; per-call bounds still come from each call's context. |
 
 ## Wazuh API
 

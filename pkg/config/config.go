@@ -31,9 +31,11 @@ type Config struct {
 	LogLevel      string
 	WebConfigFile string
 
-	CacheTTL      time.Duration
-	ScrapeTimeout time.Duration
-	StartupGrace  time.Duration
+	CacheTTL               time.Duration
+	CacheMaxStale          time.Duration
+	BackgroundFetchTimeout time.Duration
+	ScrapeTimeout          time.Duration
+	StartupGrace           time.Duration
 
 	ServerReadTimeout     time.Duration
 	ServerWriteTimeout    time.Duration
@@ -50,6 +52,19 @@ const (
 	defaultCacheTTL = 30 * time.Second
 	minCacheTTL     = 5 * time.Second
 	maxCacheTTL     = 5 * time.Minute
+
+	// Stale-while-revalidate window: how long past the TTL a cached response may
+	// still be served while a background refresh runs. Keeps slow endpoints (e.g.
+	// cluster config validation, which can outrun the scrape timeout) off the
+	// scrape hot path. 0 disables stale serving.
+	defaultCacheMaxStale = 2 * time.Minute
+	maxCacheMaxStale     = time.Hour
+
+	// Background refresh budget (detached from the scrape timeout) so an endpoint
+	// slower than WAZUH_SCRAPE_TIMEOUT can still complete and populate the cache.
+	defaultBackgroundFetchTimeout = 30 * time.Second
+	minBackgroundFetchTimeout     = 1 * time.Second
+	maxBackgroundFetchTimeout     = 5 * time.Minute
 
 	defaultScrapeTimeout = 10 * time.Second
 	minScrapeTimeout     = 1 * time.Second
@@ -77,22 +92,24 @@ func Load() (*Config, error) {
 	log := logger.New(level)
 
 	cfg := &Config{
-		APIURL:                getEnvOrDefault("WAZUH_API_URL", defaultAPIURL),
-		APIUsername:           getEnvOrDefault("WAZUH_API_USERNAME", ""),
-		APITLSSkipVerify:      getEnvBoolOrDefault(log, "WAZUH_API_TLS_SKIP_VERIFY", false),
-		APICAFile:             getEnvOrDefault("WAZUH_API_CA_FILE", ""),
-		APICertFile:           getEnvOrDefault("WAZUH_API_CERT_FILE", ""),
-		APIKeyFile:            getEnvOrDefault("WAZUH_API_KEY_FILE", ""),
-		ListenAddress:         getEnvOrDefault("WAZUH_LISTEN_ADDRESS", defaultListenAddress),
-		LogLevel:              level,
-		WebConfigFile:         getEnvOrDefault("WAZUH_WEB_CONFIG_FILE", ""),
-		ServerReadTimeout:     clampDuration(log, "WAZUH_SERVER_READ_TIMEOUT", getEnvDurationOrDefault(log, "WAZUH_SERVER_READ_TIMEOUT", defaultServerReadTimeout), minServerTimeout, maxServerTimeout),
-		ServerWriteTimeout:    clampDuration(log, "WAZUH_SERVER_WRITE_TIMEOUT", getEnvDurationOrDefault(log, "WAZUH_SERVER_WRITE_TIMEOUT", defaultServerWriteTimeout), minServerTimeout, maxServerTimeout),
-		ServerIdleTimeout:     clampDuration(log, "WAZUH_SERVER_IDLE_TIMEOUT", getEnvDurationOrDefault(log, "WAZUH_SERVER_IDLE_TIMEOUT", defaultServerIdleTimeout), minServerTimeout, maxIdleTimeout),
-		ServerShutdownTimeout: clampDuration(log, "WAZUH_SERVER_SHUTDOWN_TIMEOUT", getEnvDurationOrDefault(log, "WAZUH_SERVER_SHUTDOWN_TIMEOUT", defaultServerShutdownTimeout), minServerTimeout, maxShutdownTimeout),
-		CacheTTL:              clampDuration(log, "WAZUH_CACHE_TTL", getEnvDurationOrDefault(log, "WAZUH_CACHE_TTL", defaultCacheTTL), minCacheTTL, maxCacheTTL),
-		ScrapeTimeout:         clampDuration(log, "WAZUH_SCRAPE_TIMEOUT", getEnvDurationOrDefault(log, "WAZUH_SCRAPE_TIMEOUT", defaultScrapeTimeout), minScrapeTimeout, maxScrapeTimeout),
-		StartupGrace:          clampDuration(log, "WAZUH_STARTUP_GRACE", getEnvDurationOrDefault(log, "WAZUH_STARTUP_GRACE", 0), 0, maxStartupGrace),
+		APIURL:                 getEnvOrDefault("WAZUH_API_URL", defaultAPIURL),
+		APIUsername:            getEnvOrDefault("WAZUH_API_USERNAME", ""),
+		APITLSSkipVerify:       getEnvBoolOrDefault(log, "WAZUH_API_TLS_SKIP_VERIFY", false),
+		APICAFile:              getEnvOrDefault("WAZUH_API_CA_FILE", ""),
+		APICertFile:            getEnvOrDefault("WAZUH_API_CERT_FILE", ""),
+		APIKeyFile:             getEnvOrDefault("WAZUH_API_KEY_FILE", ""),
+		ListenAddress:          getEnvOrDefault("WAZUH_LISTEN_ADDRESS", defaultListenAddress),
+		LogLevel:               level,
+		WebConfigFile:          getEnvOrDefault("WAZUH_WEB_CONFIG_FILE", ""),
+		ServerReadTimeout:      clampDuration(log, "WAZUH_SERVER_READ_TIMEOUT", getEnvDurationOrDefault(log, "WAZUH_SERVER_READ_TIMEOUT", defaultServerReadTimeout), minServerTimeout, maxServerTimeout),
+		ServerWriteTimeout:     clampDuration(log, "WAZUH_SERVER_WRITE_TIMEOUT", getEnvDurationOrDefault(log, "WAZUH_SERVER_WRITE_TIMEOUT", defaultServerWriteTimeout), minServerTimeout, maxServerTimeout),
+		ServerIdleTimeout:      clampDuration(log, "WAZUH_SERVER_IDLE_TIMEOUT", getEnvDurationOrDefault(log, "WAZUH_SERVER_IDLE_TIMEOUT", defaultServerIdleTimeout), minServerTimeout, maxIdleTimeout),
+		ServerShutdownTimeout:  clampDuration(log, "WAZUH_SERVER_SHUTDOWN_TIMEOUT", getEnvDurationOrDefault(log, "WAZUH_SERVER_SHUTDOWN_TIMEOUT", defaultServerShutdownTimeout), minServerTimeout, maxShutdownTimeout),
+		CacheTTL:               clampDuration(log, "WAZUH_CACHE_TTL", getEnvDurationOrDefault(log, "WAZUH_CACHE_TTL", defaultCacheTTL), minCacheTTL, maxCacheTTL),
+		CacheMaxStale:          clampDuration(log, "WAZUH_CACHE_MAX_STALE", getEnvDurationOrDefault(log, "WAZUH_CACHE_MAX_STALE", defaultCacheMaxStale), 0, maxCacheMaxStale),
+		BackgroundFetchTimeout: clampDuration(log, "WAZUH_BACKGROUND_FETCH_TIMEOUT", getEnvDurationOrDefault(log, "WAZUH_BACKGROUND_FETCH_TIMEOUT", defaultBackgroundFetchTimeout), minBackgroundFetchTimeout, maxBackgroundFetchTimeout),
+		ScrapeTimeout:          clampDuration(log, "WAZUH_SCRAPE_TIMEOUT", getEnvDurationOrDefault(log, "WAZUH_SCRAPE_TIMEOUT", defaultScrapeTimeout), minScrapeTimeout, maxScrapeTimeout),
+		StartupGrace:           clampDuration(log, "WAZUH_STARTUP_GRACE", getEnvDurationOrDefault(log, "WAZUH_STARTUP_GRACE", 0), 0, maxStartupGrace),
 	}
 
 	var errs []error

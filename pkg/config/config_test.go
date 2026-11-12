@@ -24,6 +24,12 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.CacheTTL != 30*time.Second {
 		t.Errorf("CacheTTL = %v, want 30s", cfg.CacheTTL)
 	}
+	if cfg.CacheMaxStale != 2*time.Minute {
+		t.Errorf("CacheMaxStale = %v, want 2m", cfg.CacheMaxStale)
+	}
+	if cfg.BackgroundFetchTimeout != 30*time.Second {
+		t.Errorf("BackgroundFetchTimeout = %v, want 30s", cfg.BackgroundFetchTimeout)
+	}
 	if cfg.ScrapeTimeout != 10*time.Second {
 		t.Errorf("ScrapeTimeout = %v, want 10s", cfg.ScrapeTimeout)
 	}
