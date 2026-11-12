@@ -34,7 +34,9 @@ jobs:
       - name: golangci-lint (includes gosec)
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.12.2
+          # Must be a golangci-lint built with Go >= the go.mod language version
+          # (1.27); v2.12.2 is built with Go 1.26 and refuses a go 1.27.x module.
+          version: v2.15.0
 
       - name: govulncheck
         run: make govulncheck
